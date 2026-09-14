@@ -41,6 +41,7 @@ from .const import (
     CONF_REGION,
     CONF_ROOT_PREFIX,
     CONF_SECRET_ACCESS_KEY,
+    CONF_SHOW_FILE_DETAILS,
     CONF_VERIFY_SSL,
     DEFAULT_MAX_READ_BYTES,
     DEFAULT_MAX_RESULTS,
@@ -49,6 +50,7 @@ from .const import (
     DEFAULT_PERMISSIONS,
     DEFAULT_REGION,
     DEFAULT_ROOT_PREFIX,
+    DEFAULT_SHOW_FILE_DETAILS,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     MAX_MAX_READ_BYTES,
@@ -82,6 +84,7 @@ def _defaults() -> dict[str, Any]:
         CONF_VERIFY_SSL: DEFAULT_VERIFY_SSL,
         CONF_ROOT_PREFIX: DEFAULT_ROOT_PREFIX,
         CONF_NOTES_FOLDER: DEFAULT_NOTES_FOLDER,
+        CONF_SHOW_FILE_DETAILS: DEFAULT_SHOW_FILE_DETAILS,
         CONF_MAX_RESULTS: DEFAULT_MAX_RESULTS,
         CONF_MAX_READ_BYTES: DEFAULT_MAX_READ_BYTES,
         **DEFAULT_PERMISSIONS,
@@ -143,6 +146,12 @@ def _build_schema(options: dict[str, Any]) -> vol.Schema:
             CONF_NOTES_FOLDER,
             default=str(options.get(CONF_NOTES_FOLDER, DEFAULT_NOTES_FOLDER)),
         ): _text(""),
+        vol.Optional(
+            CONF_SHOW_FILE_DETAILS,
+            default=bool(
+                options.get(CONF_SHOW_FILE_DETAILS, DEFAULT_SHOW_FILE_DETAILS)
+            ),
+        ): BooleanSelector(),
         vol.Optional(
             CONF_MAX_RESULTS,
             default=int(options.get(CONF_MAX_RESULTS, DEFAULT_MAX_RESULTS)),

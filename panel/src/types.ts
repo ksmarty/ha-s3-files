@@ -19,6 +19,7 @@ export interface S3Info {
   bucket: string;
   scope: string;
   notes_folder: string;
+  show_file_details: boolean;
   permissions: S3Permissions;
 }
 

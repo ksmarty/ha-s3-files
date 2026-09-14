@@ -40,6 +40,8 @@ interface Setup {
   files?: Record<string, unknown[]>;
   contents?: Record<string, string>;
   fail?: Record<string, string>;
+  /** Whether rows show the extension, size and date. Defaults to true. */
+  showDetails?: boolean;
 }
 
 function makeHass(setup: Setup) {
@@ -48,6 +50,7 @@ function makeHass(setup: Setup) {
     bucket: "ha-files",
     scope: "Mini Notes",
     notes_folder: "",
+    show_file_details: setup.showDetails ?? true,
     permissions: { ...FULL_PERMISSIONS, ...(setup.permissions ?? {}) },
   };
 
@@ -317,6 +320,62 @@ describe("permissions drive what the panel offers", () => {
     click(fileRow.querySelector(".row-text"));
     await flush(shadow.host);
     expect(calls.some((call) => call.service === "read_file")).toBe(false);
+  });
+});
+
+describe("file details display", () => {
+  it("shows the extension, size and date by default", async () => {
+    const { shadow } = await mount({
+      files: { "": [entry("Buy milk.md", "Buy milk.md")] },
+    });
+
+    expect(rows(shadow)[0].textContent).toContain("Buy milk.md");
+    expect(rows(shadow)[0].textContent).toContain("12 B");
+    expect(rows(shadow)[0].textContent).toContain("2026-09-14");
+  });
+
+  it("hides them when the setting is off", async () => {
+    const { shadow } = await mount({
+      showDetails: false,
+      files: { "": [entry("Buy milk.md", "Buy milk.md")] },
+    });
+
+    expect(rows(shadow)[0].textContent).toContain("Buy milk");
+    expect(rows(shadow)[0].textContent).not.toContain(".md");
+    expect(rows(shadow)[0].textContent).not.toContain("12 B");
+    expect(rows(shadow)[0].textContent).not.toContain("2026-09-14");
+  });
+
+  it("keeps the rows uniform when details are off", async () => {
+    const { shadow } = await mount({
+      showDetails: false,
+      files: {
+        "": [entry("Notes", "Notes", true), entry("Buy milk.md", "Buy milk.md")],
+      },
+    });
+
+    // Folders stay listed by name, and the "Folder" label goes with the rest
+    // of the detail line so every row looks the same.
+    expect(rows(shadow)).toHaveLength(2);
+    expect(rows(shadow)[0].textContent).toContain("Notes");
+    expect(shadow.textContent).not.toContain("Folder");
+  });
+
+  it("still uses the real file name when opening the editor", async () => {
+    // Hiding the extension is a display choice; the editor must still show and
+    // save the file that actually exists.
+    const { shadow, calls } = await mount({
+      showDetails: false,
+      files: { "": [entry("Buy milk.md", "Buy milk.md")] },
+      contents: { "Buy milk.md": "buy milk" },
+    });
+
+    click(rows(shadow)[0].querySelector(".row-text"));
+    await flush(shadow.host);
+
+    expect(calls.find((call) => call.service === "read_file")?.data).toEqual({
+      path: "Buy milk.md",
+    });
   });
 });
 

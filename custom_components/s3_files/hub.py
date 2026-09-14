@@ -10,9 +10,11 @@ from .const import (
     CONF_MAX_RESULTS,
     CONF_NOTES_FOLDER,
     CONF_ROOT_PREFIX,
+    CONF_SHOW_FILE_DETAILS,
     DEFAULT_MAX_READ_BYTES,
     DEFAULT_MAX_RESULTS,
     DEFAULT_NOTES_FOLDER,
+    DEFAULT_SHOW_FILE_DETAILS,
     DOMAIN,
     MAX_MAX_READ_BYTES,
     MAX_MAX_RESULTS,
@@ -45,6 +47,17 @@ class S3FilesHub:
     @property
     def notes_folder(self) -> str:
         return normalize_prefix(self.options.get(CONF_NOTES_FOLDER, DEFAULT_NOTES_FOLDER))
+
+    @property
+    def show_file_details(self) -> bool:
+        """Whether the sidebar panel shows extensions, sizes and dates.
+
+        A presentation choice, so an entry saved before this existed still
+        shows them rather than silently losing the detail.
+        """
+        return bool(
+            self.options.get(CONF_SHOW_FILE_DETAILS, DEFAULT_SHOW_FILE_DETAILS)
+        )
 
     @property
     def max_read_bytes(self) -> int:

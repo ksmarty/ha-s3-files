@@ -19,6 +19,7 @@ from custom_components.s3_files import _async_setup_panel, _panel_path  # noqa: 
 from custom_components.s3_files.const import (  # noqa: E402
     CONF_ALLOW_DELETE,
     CONF_ALLOW_LIST,
+    CONF_SHOW_FILE_DETAILS,
     DOMAIN,
     PANEL_ELEMENT,
     PANEL_FILENAME,
@@ -123,6 +124,22 @@ def test_info_needs_no_permissions():
     hub = build_hub(FakeHass(), options(**{name: False for name in PERMISSIONS}))
     info = run(async_get_info(hub, Call()))
     assert not any(info["permissions"].values())
+
+
+def test_info_tells_the_panel_to_show_file_details_by_default():
+    hub = build_hub(FakeHass(), options())
+    assert run(async_get_info(hub, Call()))["show_file_details"] is True
+
+
+def test_info_can_tell_the_panel_to_hide_file_details():
+    hub = build_hub(FakeHass(), options(**{CONF_SHOW_FILE_DETAILS: False}))
+    assert run(async_get_info(hub, Call()))["show_file_details"] is False
+
+
+def test_an_entry_without_the_setting_still_shows_file_details():
+    """An entry saved before the toggle existed must not lose the detail."""
+    hub = build_hub(FakeHass(), {})
+    assert run(async_get_info(hub, Call()))["show_file_details"] is True
 
 
 # ---------------------------------------------------------------------------

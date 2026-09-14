@@ -185,6 +185,11 @@ Release steps (after approval):
   `tests/test_config_flow.py` pins the contract, and
   `tests/test_config_flow.py::test_the_options_flow_can_build_its_form` drives
   the step for real.
+- **Panel presentation is an option, not a permission.** `show_file_details`
+  only changes what the sidebar shows; it must never gate a call. Hiding an
+  extension is display only — the editor still opens and saves the real name.
+  It defaults to true, and an entry saved before it existed must keep showing
+  detail rather than silently losing it.
 - **Note filenames come from the note itself.** `paths.note_filename` keeps the
   words the user said (no dashes, no timestamp), cuts a long note to its first
   sentence and truncates on a word boundary. Because the timestamp is gone,

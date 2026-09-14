@@ -223,6 +223,7 @@ async def async_get_info(hub: S3FilesHub, call: ServiceCall) -> dict[str, Any]:
         "bucket": hub.config.bucket,
         "scope": hub.root_prefix,
         "notes_folder": hub.notes_folder,
+        "show_file_details": hub.show_file_details,
         "permissions": {
             name: hub.permissions.enabled(name) for name in PERMISSIONS
         },

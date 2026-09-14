@@ -145,8 +145,29 @@ export function iconFor(entry: S3Entry): string {
   return EXTENSION_ICONS[extensionOf(entry.path)] ?? "mdi:file-outline";
 }
 
-/** A one line summary of an entry's metadata. */
-export function describeEntry(entry: S3Entry): string {
+/** A file name without its extension. Folders are returned unchanged. */
+export function stripExtension(name: string): string {
+  const dot = name.lastIndexOf(".");
+  // A leading dot is part of the name (".gitignore"), not an extension.
+  if (dot <= 0) return name;
+  return name.slice(0, dot);
+}
+
+/** What a row shows as an entry's name. */
+export function displayName(entry: S3Entry, showDetails = true): string {
+  if (entry.is_folder || showDetails) return entry.name;
+  return stripExtension(entry.name);
+}
+
+/**
+ * A one line summary of an entry's metadata.
+ *
+ * Empty when details are switched off, which drops the "Folder" label too:
+ * with every file row losing its detail line, a lone label on folders would
+ * stand out rather than inform.
+ */
+export function describeEntry(entry: S3Entry, showDetails = true): string {
+  if (!showDetails) return "";
   if (entry.is_folder) return "Folder";
   const parts: string[] = [];
   if (entry.size !== null && entry.size !== undefined) {

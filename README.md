@@ -61,6 +61,7 @@ diagnostics — it is never written to the log.
 | --- | --- |
 | **Folder this integration is limited to** | The only folder it can reach, e.g. `homeassistant/notes`. Leave empty to allow the whole bucket. |
 | **Notes subfolder** | Where "take a note" saves, relative to the folder above. Leave it empty (the default) to save notes directly in that folder. |
+| **Show extensions, sizes and dates** | Whether the sidebar panel shows each file's extension, its size and its date. On by default; turn it off for a plain list of names. |
 
 ### Permissions
 
@@ -189,6 +190,12 @@ would refuse:
 | Delete files | No delete button on any row |
 
 Deleting always asks first, and says that an S3 delete cannot be undone.
+
+There is one display setting, **Show extensions, sizes and dates**, on by
+default. Turn it off for a plain list of names: the extension is dropped from
+each file, and the size and date line disappears — along with the "Folder"
+label, so every row stays the same shape. Hiding the extension is only
+presentation; opening a file still reads and saves the real one.
 
 Everything is served by the integration itself — there is nothing to add to your
 dashboard and no resource URL to configure. The panel is a normal Home Assistant

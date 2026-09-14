@@ -19,6 +19,9 @@ CONF_PATH_STYLE = "path_style"
 CONF_VERIFY_SSL = "verify_ssl"
 CONF_ROOT_PREFIX = "root_prefix"
 CONF_NOTES_FOLDER = "notes_folder"
+# Sidebar panel presentation, not an action: whether rows show the file
+# extension, the size and the date.
+CONF_SHOW_FILE_DETAILS = "show_file_details"
 
 DEFAULT_REGION = "us-east-1"
 # S3-compatible servers (MinIO, Ceph, Backblaze B2, ...) generally need
@@ -29,6 +32,9 @@ DEFAULT_ROOT_PREFIX = ""
 # Empty by default: notes land directly in the folder the integration is
 # scoped to. Set a name to keep them in a subfolder of it instead.
 DEFAULT_NOTES_FOLDER = ""
+# Show extensions, sizes and dates in the sidebar panel by default; turning it
+# off leaves a plain list of names.
+DEFAULT_SHOW_FILE_DETAILS = True
 
 # ---------------------------------------------------------------------------
 # Permissions

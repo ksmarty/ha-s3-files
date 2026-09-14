@@ -5,6 +5,7 @@ import { deleteFile, getInfo, listFiles, readFile, writeFile } from "./api";
 import {
   breadcrumbs,
   describeEntry,
+  displayName,
   iconFor,
   isTextFile,
   joinPath,
@@ -224,6 +225,11 @@ export class S3FilesPanel extends LitElement {
     return this._info.scope ? this._info.scope.split("/").pop() || "Files" : "Bucket";
   }
 
+  /** Whether rows show the extension, size and date. Defaults to showing them. */
+  private get _showDetails(): boolean {
+    return this._info?.show_file_details ?? true;
+  }
+
   private async _start(): Promise<void> {
     this._loading = true;
     this._error = "";
@@ -441,6 +447,7 @@ export class S3FilesPanel extends LitElement {
 
   private _renderRow(entry: S3Entry) {
     const clickable = entry.is_folder || this._permissions.allow_read;
+    const meta = this._showDetails ? describeEntry(entry, true) : "";
     return html`
       <div class="row" data-clickable=${clickable}>
         <ha-icon
@@ -448,8 +455,8 @@ export class S3FilesPanel extends LitElement {
           @click=${() => this._activate(entry)}
         ></ha-icon>
         <div class="row-text" @click=${() => this._activate(entry)}>
-          <div class="row-title">${entry.name}</div>
-          <div class="row-meta">${describeEntry(entry)}</div>
+          <div class="row-title">${displayName(entry, this._showDetails)}</div>
+          ${meta ? html`<div class="row-meta">${meta}</div>` : nothing}
         </div>
         ${!entry.is_folder && this._permissions.allow_delete
           ? html`<ha-button

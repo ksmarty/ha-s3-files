@@ -4,6 +4,7 @@ import {
   baseName,
   breadcrumbs,
   describeEntry,
+  displayName,
   extensionOf,
   humanSize,
   iconFor,
@@ -11,6 +12,7 @@ import {
   joinPath,
   parentPath,
   sortEntries,
+  stripExtension,
 } from "../src/format";
 import type { S3Entry } from "../src/types";
 
@@ -165,6 +167,38 @@ describe("describeEntry", () => {
 
   it("copes with missing metadata", () => {
     expect(describeEntry(entry("notes.md"))).toBe("");
+  });
+
+  it("renders nothing at all when details are switched off", () => {
+    expect(describeEntry(entry("notes.md", { size: 12 }), false)).toBe("");
+    expect(describeEntry(entry("notes", { is_folder: true }), false)).toBe("");
+  });
+});
+
+describe("stripExtension", () => {
+  it("removes the last extension", () => {
+    expect(stripExtension("Buy milk.md")).toBe("Buy milk");
+    expect(stripExtension("archive.tar.gz")).toBe("archive.tar");
+    expect(stripExtension("README")).toBe("README");
+    // A leading dot is part of the name, not an extension.
+    expect(stripExtension(".gitignore")).toBe(".gitignore");
+  });
+});
+
+describe("displayName", () => {
+  it("keeps the whole name when details are shown", () => {
+    expect(displayName(entry("Buy milk.md"), true)).toBe("Buy milk.md");
+    expect(displayName(entry("Buy milk.md"))).toBe("Buy milk.md");
+  });
+
+  it("drops the extension when they are hidden", () => {
+    expect(displayName(entry("Buy milk.md"), false)).toBe("Buy milk");
+  });
+
+  it("leaves folder names alone either way", () => {
+    const folder = entry("2026.notes", { is_folder: true });
+    expect(displayName(folder, false)).toBe("2026.notes");
+    expect(displayName(folder, true)).toBe("2026.notes");
   });
 });
 

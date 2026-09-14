@@ -24,6 +24,7 @@ from custom_components.s3_files.const import (  # noqa: E402
     CONF_REGION,
     CONF_ROOT_PREFIX,
     CONF_SECRET_ACCESS_KEY,
+    CONF_SHOW_FILE_DETAILS,
     DEFAULT_MAX_READ_BYTES,
     DEFAULT_NOTES_FOLDER,
     DEFAULT_PERMISSIONS,
@@ -291,3 +292,39 @@ def test_a_missing_notes_folder_falls_back_to_the_default():
     """An entry saved before the field existed still gets a sane value."""
     cleaned = config_flow._clean({}, {CONF_BUCKET: "b"})
     assert cleaned[CONF_NOTES_FOLDER] == config_flow.DEFAULT_NOTES_FOLDER
+
+
+# ---------------------------------------------------------------------------
+# The sidebar detail toggle.
+# ---------------------------------------------------------------------------
+
+
+def test_file_details_are_shown_by_default():
+    assert config_flow._defaults()[CONF_SHOW_FILE_DETAILS] is True
+
+
+def test_an_entry_saved_before_the_toggle_still_shows_details():
+    """No stored value must mean "show them", not "hide them"."""
+    assert config_flow._clean({}, {CONF_BUCKET: "b"})[CONF_SHOW_FILE_DETAILS] is True
+    assert config_flow._stored({})[CONF_SHOW_FILE_DETAILS] is True
+
+
+def test_the_toggle_can_be_turned_off():
+    cleaned = config_flow._clean({CONF_SHOW_FILE_DETAILS: False}, {})
+    assert cleaned[CONF_SHOW_FILE_DETAILS] is False
+
+
+def test_the_toggle_survives_a_re_save():
+    """Turning it off, then saving something else, must not turn it back on."""
+    stored = {CONF_SHOW_FILE_DETAILS: False, CONF_BUCKET: "b"}
+    cleaned = config_flow._clean({CONF_BUCKET: "b2"}, stored)
+    assert cleaned[CONF_SHOW_FILE_DETAILS] is False
+
+
+def test_the_form_offers_the_toggle():
+    fields = {
+        field["name"]: field
+        for field in _serialize(config_flow._build_schema(config_flow._defaults()))
+    }
+    assert fields[CONF_SHOW_FILE_DETAILS]["default"] is True
+    assert "boolean" in fields[CONF_SHOW_FILE_DETAILS]["selector"]

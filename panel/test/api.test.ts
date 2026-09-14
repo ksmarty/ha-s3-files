@@ -13,6 +13,7 @@ import {
   deleteFile,
   getInfo,
   listFiles,
+  moveFile,
   readFile,
   writeFile,
 } from "../src/api";
@@ -137,6 +138,34 @@ describe("deleteFile", () => {
     await deleteFile(hass, "notes/a.md");
     expect(calls[0].service).toBe("delete_file");
     expect(calls[0].data).toEqual({ path: "notes/a.md" });
+  });
+});
+
+describe("moveFile", () => {
+  it("sends the source, destination and overwrite flag", async () => {
+    const { hass, calls } = fakeHass(() => ({ path: "Journal/Shopping.md" }));
+
+    const result = await moveFile(hass, "Journal/Buy milk.md", "Journal/Shopping.md");
+
+    expect(result).toBe("Journal/Shopping.md");
+    expect(calls[0].service).toBe("move_file");
+    expect(calls[0].data).toEqual({
+      source: "Journal/Buy milk.md",
+      destination: "Journal/Shopping.md",
+      overwrite: false,
+    });
+  });
+
+  it("never overwrites unless asked", async () => {
+    const { hass, calls } = fakeHass(() => ({ path: "b.md" }));
+    await moveFile(hass, "a.md", "b.md");
+    expect(calls[0].data.overwrite).toBe(false);
+  });
+
+  it("reports where the file ended up", async () => {
+    // The integration is the authority on the final path.
+    const { hass } = fakeHass(() => ({}));
+    expect(await moveFile(hass, "a.md", "b.md")).toBe("b.md");
   });
 });
 

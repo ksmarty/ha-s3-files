@@ -191,6 +191,21 @@ export function ensureExtension(name: string, extension = "md"): string {
   return `${trimmed}.${extension}`;
 }
 
+/**
+ * Where a rename lands.
+ *
+ * The file stays in the folder it was in, and keeps its extension unless the
+ * new name brings its own — so renaming "Buy milk.md" to "Shopping" gives
+ * "Shopping.md" rather than a file with no type.
+ */
+export function renamePath(oldPath: string, newName: string): string {
+  const cleaned = ensureExtension(newName, extensionOf(oldPath) || "md");
+  // Nothing usable typed: hand back the original path rather than an empty
+  // one, so a caller that forgets to check cannot move the file to nowhere.
+  if (!cleaned) return oldPath;
+  return joinPath(parentPath(oldPath), cleaned);
+}
+
 export interface MarkdownEdit {
   text: string;
   selectionStart: number;

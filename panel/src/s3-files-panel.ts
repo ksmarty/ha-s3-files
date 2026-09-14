@@ -1,10 +1,18 @@
-import { mdiDelete, mdiPencil } from "@mdi/js";
+import { mdiDelete, mdiPencil, mdiRenameBox } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { property, query, state } from "lit/decorators.js";
 
-import { deleteFile, getInfo, listFiles, readFile, writeFile } from "./api";
+import {
+  deleteFile,
+  getInfo,
+  listFiles,
+  moveFile,
+  readFile,
+  writeFile,
+} from "./api";
 import {
   applyMarkdown,
+  baseName,
   breadcrumbs,
   describeEntry,
   displayName,
@@ -13,7 +21,9 @@ import {
   isTextFile,
   joinPath,
   parentPath,
+  renamePath,
   sortEntries,
+  stripExtension,
 } from "./format";
 import type { HomeAssistant, S3Entry, S3Info } from "./types";
 
@@ -68,6 +78,15 @@ export class S3FilesPanel extends LitElement {
   @state() private _saving = false;
 
   @state() private _deleteTarget: S3Entry | null = null;
+
+  // Rename dialog state
+  @state() private _renameTarget: S3Entry | null = null;
+
+  @state() private _renameName = "";
+
+  @state() private _renameError = "";
+
+  @state() private _renaming = false;
 
   @query("textarea.markdown") private _contentArea?: HTMLTextAreaElement;
 
@@ -460,6 +479,13 @@ export class S3FilesPanel extends LitElement {
         action: () => void this._openExisting(entry),
       });
     }
+    if (this._permissions.allow_move && !entry.is_folder) {
+      items.push({
+        label: "Rename",
+        path: mdiRenameBox,
+        action: () => this._openRename(entry),
+      });
+    }
     if (this._permissions.allow_delete && !entry.is_folder) {
       items.push({
         label: "Delete",
@@ -469,6 +495,61 @@ export class S3FilesPanel extends LitElement {
       });
     }
     return items;
+  }
+
+  private _openRename(entry: S3Entry): void {
+    this._renameTarget = entry;
+    this._renameError = "";
+    this._renaming = false;
+    // Pre-filled without the extension: it is kept unless the typed name has
+    // one of its own, so it cannot be lost by accident.
+    this._renameName = stripExtension(baseName(entry.path));
+  }
+
+  /** Where the renamed file will land. */
+  private get _renameDestination(): string {
+    if (!this._renameTarget) return "";
+    return renamePath(this._renameTarget.path, this._renameName);
+  }
+
+  private async _rename(): Promise<void> {
+    const target = this._renameTarget;
+    if (!target) return;
+
+    if (!this._renameName.trim()) {
+      this._renameError = "Give the file a name.";
+      return;
+    }
+
+    const destination = this._renameDestination;
+    if (destination === target.path) {
+      this._renameError = "That is already this file's name.";
+      return;
+    }
+
+    // Checked here as well as by the integration, so the user gets a plain
+    // message instead of the service's wording about overwriting.
+    if (
+      parentPath(destination) === this._path &&
+      this._entries.some((item) => item.path === destination)
+    ) {
+      this._renameError = `${destination} already exists. Choose another name.`;
+      return;
+    }
+
+    this._renaming = true;
+    this._renameError = "";
+    try {
+      // Never replaces anything: a rename that would clobber another file is
+      // refused rather than silently destroying it.
+      await moveFile(this.hass, target.path, destination, false);
+      this._renameTarget = null;
+      await this._load(this._path);
+    } catch (err) {
+      this._renameError = message(err);
+    } finally {
+      this._renaming = false;
+    }
   }
 
   protected render() {
@@ -502,7 +583,8 @@ export class S3FilesPanel extends LitElement {
         ${this._renderList()}
       </div>
 
-      ${this._renderEditor()} ${this._renderDeleteDialog()}
+      ${this._renderEditor()} ${this._renderRenameDialog()}
+      ${this._renderDeleteDialog()}
     `;
   }
 
@@ -697,6 +779,57 @@ export class S3FilesPanel extends LitElement {
                 ${this._editorIsNew ? "Create" : "Save"}
               </ha-button>`
             : nothing}
+        </ha-dialog-footer>
+      </ha-dialog>
+    `;
+  }
+
+  private _renderRenameDialog() {
+    const target = this._renameTarget;
+    return html`
+      <ha-dialog
+        .open=${target !== null}
+        .heading=${"Rename file"}
+        @closed=${() => (this._renameTarget = null)}
+      >
+        <div class="editor">
+          <div class="field">
+            <label for="s3-files-rename">New name</label>
+            <input
+              id="s3-files-rename"
+              type="text"
+              .value=${this._renameName}
+              ?disabled=${this._renaming}
+              @input=${(ev: Event) => {
+                this._renameName = (ev.target as HTMLInputElement).value;
+                this._renameError = "";
+              }}
+              @keydown=${(ev: KeyboardEvent) => {
+                if (ev.key === "Enter") {
+                  ev.preventDefault();
+                  void this._rename();
+                }
+              }}
+            />
+            <div class="where">
+              Renamed to ${this._renameDestination || "…"}
+            </div>
+          </div>
+          ${this._renameError
+            ? html`<div class="error">${this._renameError}</div>`
+            : nothing}
+        </div>
+        <ha-dialog-footer slot="footer">
+          <ha-button slot="secondaryAction" @click=${() => (this._renameTarget = null)}>
+            Cancel
+          </ha-button>
+          <ha-button
+            slot="primaryAction"
+            .disabled=${this._renaming}
+            @click=${this._rename}
+          >
+            Rename
+          </ha-button>
         </ha-dialog-footer>
       </ha-dialog>
     `;

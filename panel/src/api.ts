@@ -80,3 +80,18 @@ export async function deleteFile(
 ): Promise<void> {
   await call(hass, "delete_file", { path });
 }
+
+/** Rename (or move) a file. Returns the path it ended up at. */
+export async function moveFile(
+  hass: HomeAssistant,
+  source: string,
+  destination: string,
+  overwrite = false,
+): Promise<string> {
+  const response = await call<{ path?: string }>(hass, "move_file", {
+    source,
+    destination,
+    overwrite,
+  });
+  return String(response.path ?? destination);
+}

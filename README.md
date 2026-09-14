@@ -71,7 +71,7 @@ diagnostics — it is never written to the log.
 | **Read file contents** | `read_file` and `S3ReadFile`. | on |
 | **Create and overwrite files** | `write_file`, the "take a note" action, and `S3WriteFile` / `S3CreateNote`. | on |
 | **Delete files** | `delete_file` and `S3DeleteFile`. Deleting an S3 object cannot be undone. | off |
-| **Move and rename files** | `move_file` and `S3MoveFile`. A move copies the object, then deletes the original. | off |
+| **Move and rename files** | `move_file`, the `S3MoveFile` tool, and **Rename** in the sidebar. A move copies the object, then deletes the original. | off |
 | **Create folders** | `create_folder` and `S3CreateFolder`. | on |
 
 Delete and move are off by default. Turn them on deliberately.
@@ -192,6 +192,17 @@ would refuse:
 Deleting always asks first, and says that an S3 delete cannot be undone. It is
 available from the **⋮** menu on each row and from the editor, whenever the
 delete permission is switched on.
+
+### Renaming a file
+
+The same **⋮** menu has **Rename**, when the move permission is on. The name is
+pre-filled without its extension so it cannot be lost by accident: renaming
+`Buy milk.md` to `Shopping` gives `Shopping.md`. Type your own extension —
+`Shopping.txt` — to change it instead.
+
+The file stays in the folder it was in, and the line under the field shows
+exactly where it will end up. A rename that would land on an existing file is
+refused rather than replacing it.
 
 ### Writing a note
 

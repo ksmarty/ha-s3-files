@@ -13,6 +13,7 @@ import {
   isTextFile,
   joinPath,
   parentPath,
+  renamePath,
   sortEntries,
   stripExtension,
 } from "../src/format";
@@ -246,6 +247,36 @@ describe("ensureExtension", () => {
   it("returns nothing for an empty name, so the caller can complain", () => {
     expect(ensureExtension("")).toBe("");
     expect(ensureExtension("   ")).toBe("");
+  });
+});
+
+describe("renamePath", () => {
+  it("keeps the file in the folder it was in", () => {
+    expect(renamePath("Journal/Buy milk.md", "Shopping")).toBe(
+      "Journal/Shopping.md",
+    );
+  });
+
+  it("keeps the original extension when the new name has none", () => {
+    expect(renamePath("notes.txt", "ideas")).toBe("ideas.txt");
+    expect(renamePath("photo.png", "holiday")).toBe("holiday.png");
+  });
+
+  it("uses the extension the new name brings", () => {
+    expect(renamePath("notes.md", "notes.txt")).toBe("notes.txt");
+  });
+
+  it("falls back to markdown for a file with no extension", () => {
+    expect(renamePath("README", "ABOUT")).toBe("ABOUT.md");
+  });
+
+  it("renames at the scope root", () => {
+    expect(renamePath("a.md", "b")).toBe("b.md");
+  });
+
+  it("leaves the name alone when nothing usable is typed", () => {
+    // The caller reports "give the file a name" rather than moving it.
+    expect(renamePath("a.md", "   ")).toBe("a.md");
   });
 });
 

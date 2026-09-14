@@ -165,6 +165,28 @@ function menuAction(shadow: ShadowRoot, label: string, index = 0): (() => void) 
   return menuItems(shadow, index).find((item) => item.label === label)?.action;
 }
 
+function renameDialog(shadow: ShadowRoot): HTMLElement | undefined {
+  return Array.from(shadow.querySelectorAll("ha-dialog")).find(
+    (dialog) => (dialog as unknown as { heading?: string }).heading === "Rename file",
+  ) as HTMLElement | undefined;
+}
+
+function renameInput(shadow: ShadowRoot): HTMLInputElement {
+  return renameDialog(shadow)!.querySelector("input") as HTMLInputElement;
+}
+
+function typeRename(shadow: ShadowRoot, value: string): void {
+  const input = renameInput(shadow);
+  input.value = value;
+  input.dispatchEvent(new Event("input"));
+}
+
+function renameButton(shadow: ShadowRoot): Element | null {
+  return (
+    renameDialog(shadow)?.querySelector('ha-button[slot="primaryAction"]') ?? null
+  );
+}
+
 afterEach(() => {
   document.body.innerHTML = "";
 });
@@ -411,6 +433,146 @@ describe("creating a file", () => {
 
     expect(shadow.textContent).toContain("Give the file a name");
     expect(calls.some((call) => call.service === "write_file")).toBe(false);
+  });
+});
+
+describe("renaming a file", () => {
+  const allowed = { allow_move: true };
+
+  it("is offered only when moving is switched on", async () => {
+    const { shadow } = await mount({
+      permissions: { allow_move: false },
+      files: { "": [entry("a.md", "a.md")] },
+    });
+    expect(menuAction(shadow, "Rename")).toBeUndefined();
+  });
+
+  it("is not offered for a folder", async () => {
+    const { shadow } = await mount({
+      permissions: allowed,
+      files: { "": [entry("Journal", "Journal", true)] },
+    });
+    expect(menuAction(shadow, "Rename")).toBeUndefined();
+  });
+
+  it("renames a file and keeps its extension", async () => {
+    const { shadow, calls } = await mount({
+      permissions: allowed,
+      files: { "": [entry("Buy milk.md", "Buy milk.md")] },
+    });
+
+    menuAction(shadow, "Rename")!();
+    await flush(shadow.host);
+
+    // Pre-filled with the name without its extension, so it cannot be lost.
+    expect(renameInput(shadow).value).toBe("Buy milk");
+    expect(shadow.textContent).toContain("Renamed to Buy milk.md");
+
+    typeRename(shadow, "Shopping");
+    await flush(shadow.host);
+    expect(shadow.textContent).toContain("Renamed to Shopping.md");
+
+    click(renameButton(shadow));
+    await flush(shadow.host);
+
+    expect(calls.find((call) => call.service === "move_file")?.data).toEqual({
+      source: "Buy milk.md",
+      destination: "Shopping.md",
+      overwrite: false,
+    });
+  });
+
+  it("keeps the file in the folder it was in", async () => {
+    const { shadow, calls } = await mount({
+      permissions: allowed,
+      files: {
+        "": [entry("Journal", "Journal", true)],
+        Journal: [entry("Journal/Today.md", "Today.md")],
+      },
+    });
+
+    click(rows(shadow)[0].querySelector(".row-text"));
+    await flush(shadow.host);
+
+    menuAction(shadow, "Rename")!();
+    await flush(shadow.host);
+    typeRename(shadow, "Tomorrow");
+    await flush(shadow.host);
+    click(renameButton(shadow));
+    await flush(shadow.host);
+
+    expect(calls.find((call) => call.service === "move_file")?.data).toEqual({
+      source: "Journal/Today.md",
+      destination: "Journal/Tomorrow.md",
+      overwrite: false,
+    });
+  });
+
+  it("uses an extension the new name brings", async () => {
+    const { shadow, calls } = await mount({
+      permissions: allowed,
+      files: { "": [entry("notes.md", "notes.md")] },
+    });
+
+    menuAction(shadow, "Rename")!();
+    await flush(shadow.host);
+    typeRename(shadow, "notes.txt");
+    await flush(shadow.host);
+    click(renameButton(shadow));
+    await flush(shadow.host);
+
+    expect(calls.find((call) => call.service === "move_file")?.data.destination).toBe(
+      "notes.txt",
+    );
+  });
+
+  it("refuses a name that is already taken, without touching anything", async () => {
+    const { shadow, calls } = await mount({
+      permissions: allowed,
+      files: { "": [entry("a.md", "a.md"), entry("b.md", "b.md")] },
+    });
+
+    menuAction(shadow, "Rename", 0)!();
+    await flush(shadow.host);
+    typeRename(shadow, "b");
+    await flush(shadow.host);
+    click(renameButton(shadow));
+    await flush(shadow.host);
+
+    expect(shadow.textContent).toContain("already exists");
+    expect(calls.some((call) => call.service === "move_file")).toBe(false);
+  });
+
+  it("says so when the name has not changed", async () => {
+    const { shadow, calls } = await mount({
+      permissions: allowed,
+      files: { "": [entry("a.md", "a.md")] },
+    });
+
+    menuAction(shadow, "Rename")!();
+    await flush(shadow.host);
+    click(renameButton(shadow));
+    await flush(shadow.host);
+
+    expect(shadow.textContent).toContain("already this file's name");
+    expect(calls.some((call) => call.service === "move_file")).toBe(false);
+  });
+
+  it("wants a name", async () => {
+    const { shadow, calls } = await mount({
+      permissions: allowed,
+      files: { "": [entry("a.md", "a.md")] },
+    });
+
+    menuAction(shadow, "Rename")!();
+    await flush(shadow.host);
+    typeRename(shadow, "   ");
+    await flush(shadow.host);
+    click(renameButton(shadow));
+    await flush(shadow.host);
+
+    expect(shadow.textContent).toContain("Give the file a name");
+    expect(calls.some((call) => call.service === "move_file")).toBe(false);
   });
 });
 

@@ -25,7 +25,7 @@ class FakeConfig:
 
 
 class FakeServiceRegistry:
-    """A service registry that records calls.
+    """A service registry that records what it is asked to do.
 
     A real Home Assistant always has one; by default no services are available,
     which is the state before any integration has registered theirs.
@@ -34,9 +34,18 @@ class FakeServiceRegistry:
     def __init__(self, available: tuple[str, ...] = ()) -> None:
         self.available = set(available)
         self.calls: list[tuple[str, object]] = []
+        self.registered: dict[str, object] = {}
 
     def has_service(self, domain: str, name: str) -> bool:
         return f"{domain}.{name}" in self.available
+
+    def async_register(self, domain, name, handler, schema=None, **kwargs) -> None:
+        self.registered[f"{domain}.{name}"] = handler
+        self.available.add(f"{domain}.{name}")
+
+    def async_remove(self, domain, name) -> None:
+        self.registered.pop(f"{domain}.{name}", None)
+        self.available.discard(f"{domain}.{name}")
 
     async def async_call(self, domain, name, data=None, blocking=False):
         self.calls.append((f"{domain}.{name}", data))

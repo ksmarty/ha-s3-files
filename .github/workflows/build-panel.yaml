@@ -1,0 +1,45 @@
+name: Build panel
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: Panel lint, test + build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: panel/package-lock.json
+
+      - name: Install dependencies
+        working-directory: panel
+        run: npm ci
+
+      - name: Lint
+        working-directory: panel
+        run: npm run lint
+
+      - name: Type check
+        working-directory: panel
+        run: npm run typecheck
+
+      - name: Unit tests
+        working-directory: panel
+        run: npm test
+
+      - name: Build
+        working-directory: panel
+        run: npm run build
+
+      - name: The committed bundle is up to date
+        # The integration serves the built file, so a stale bundle in the repo
+        # would ship a panel that does not match the source.
+        run: git diff --exit-code -- custom_components/s3_files/www

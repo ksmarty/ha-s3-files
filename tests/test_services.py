@@ -31,6 +31,7 @@ from custom_components.s3_files.const import (  # noqa: E402
     PERMISSIONS,
     SERVICE_CREATE_FOLDER,
     SERVICE_DELETE_FILE,
+    SERVICE_GET_INFO,
     SERVICE_INSTALL_SENTENCES,
     SERVICE_LIST_FILES,
     SERVICE_MOVE_FILE,
@@ -276,17 +277,20 @@ def test_only_enabled_services_are_registered():
         SERVICE_READ_FILE,
         SERVICE_WRITE_FILE,
         SERVICE_CREATE_FOLDER,
-        # Not permission gated: copying sentences is a setup step.
+        # Not permission gated: both are setup/support rather than actions on
+        # the bucket. get_info is what the sidebar panel asks for.
         SERVICE_INSTALL_SENTENCES,
+        SERVICE_GET_INFO,
     }
     assert SERVICE_DELETE_FILE not in registered
     assert SERVICE_MOVE_FILE not in registered
 
 
-def test_everything_off_still_leaves_the_sentence_installer():
+def test_everything_off_still_leaves_the_support_services():
+    """Nothing on the bucket works, but the setup helpers remain."""
     hass = ServiceHass()
     registered = _registered_for(hass, **{name: False for name in PERMISSIONS})
-    assert registered == {SERVICE_INSTALL_SENTENCES}
+    assert registered == {SERVICE_INSTALL_SENTENCES, SERVICE_GET_INFO}
 
 
 def test_the_registry_only_receives_enabled_services():
@@ -300,6 +304,7 @@ def test_the_registry_only_receives_enabled_services():
         f"{DOMAIN}.{SERVICE_MOVE_FILE}",
         f"{DOMAIN}.{SERVICE_CREATE_FOLDER}",
         f"{DOMAIN}.{SERVICE_INSTALL_SENTENCES}",
+        f"{DOMAIN}.{SERVICE_GET_INFO}",
     }
 
 

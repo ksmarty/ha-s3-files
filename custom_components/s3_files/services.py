@@ -30,8 +30,10 @@ from .const import (
     ENCODING_TEXT,
     ENCODINGS,
     MAX_MAX_READ_BYTES,
+    PERMISSIONS,
     SERVICE_CREATE_FOLDER,
     SERVICE_DELETE_FILE,
+    SERVICE_GET_INFO,
     SERVICE_INSTALL_SENTENCES,
     SERVICE_LIST_FILES,
     SERVICE_MOVE_FILE,
@@ -108,6 +110,8 @@ SCHEMA_CREATE_FOLDER = vol.Schema(
 SCHEMA_INSTALL_SENTENCES = vol.Schema(
     {vol.Optional("language"): str}, extra=vol.PREVENT_EXTRA
 )
+
+SCHEMA_GET_INFO = vol.Schema({}, extra=vol.PREVENT_EXTRA)
 
 
 def _decode_content(content: str, encoding: str) -> bytes:
@@ -208,6 +212,23 @@ async def async_create_folder(hub: S3FilesHub, call: ServiceCall) -> dict[str, A
     return await hub.client.async_create_folder(str(call.data[FIELD_PATH]))
 
 
+async def async_get_info(hub: S3FilesHub, call: ServiceCall) -> dict[str, Any]:
+    """Describe the setup for the sidebar panel.
+
+    Deliberately free of file contents and credentials: it says where the
+    integration is scoped to and which actions are switched on, so the panel
+    can hide what the integration would refuse anyway.
+    """
+    return {
+        "bucket": hub.config.bucket,
+        "scope": hub.root_prefix,
+        "notes_folder": hub.notes_folder,
+        "permissions": {
+            name: hub.permissions.enabled(name) for name in PERMISSIONS
+        },
+    }
+
+
 # name -> (permission that gates it, handler, schema)
 SERVICE_DEFINITIONS: dict[str, tuple[str, Any, vol.Schema]] = {
     SERVICE_LIST_FILES: (CONF_ALLOW_LIST, async_list_files, SCHEMA_LIST_FILES),
@@ -233,6 +254,7 @@ SERVICE_FIELDS = {
     SERVICE_MOVE_FILE: {FIELD_SOURCE, FIELD_DESTINATION, FIELD_OVERWRITE},
     SERVICE_CREATE_FOLDER: {FIELD_PATH},
     SERVICE_INSTALL_SENTENCES: {"language"},
+    SERVICE_GET_INFO: set(),
 }
 
 
@@ -280,6 +302,17 @@ async def async_setup_services(hass: HomeAssistant, hub: S3FilesHub) -> list[str
         supports_response=SupportsResponse.OPTIONAL,
     )
     registered.append(SERVICE_INSTALL_SENTENCES)
+
+    # Likewise ungated: this is what the sidebar panel asks for so it can hide
+    # what the permissions forbid. It reveals no contents and no credentials.
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_INFO,
+        await _make(async_get_info),
+        schema=SCHEMA_GET_INFO,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    registered.append(SERVICE_GET_INFO)
 
     return registered
 

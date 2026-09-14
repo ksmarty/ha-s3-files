@@ -95,6 +95,18 @@ SERVICE_CREATE_FOLDER = "create_folder"
 # Not permission gated: copying the sentence templates is a setup step, not an
 # action on the bucket.
 SERVICE_INSTALL_SENTENCES = "install_sentences"
+# Not permission gated either: this describes the setup so the sidebar panel
+# knows what it may offer. It returns no file contents and no credentials.
+SERVICE_GET_INFO = "get_info"
+
+# ---------------------------------------------------------------------------
+# Sidebar panel
+# ---------------------------------------------------------------------------
+PANEL_FILENAME = "s3-files-panel.js"
+PANEL_URL_PATH = "s3-files"
+PANEL_ELEMENT = "s3-files-panel"
+PANEL_TITLE = "S3 Files"
+PANEL_ICON = "mdi:folder-network-outline"
 
 # ---------------------------------------------------------------------------
 # Intents

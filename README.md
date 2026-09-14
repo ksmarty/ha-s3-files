@@ -17,6 +17,9 @@ The integration is built around two ideas:
 Works with Amazon S3, MinIO, Ceph, Backblaze B2, Wasabi, Cloudflare R2 and
 anything else that speaks the S3 API.
 
+There are three ways in: talk to your assistant, call the services from
+automations, or browse and edit the files yourself in the sidebar panel.
+
 ## Requirements
 
 - Home Assistant 2024.6 or newer
@@ -169,6 +172,29 @@ Note sentences are tried before the bare wildcard ones, so *"take a note called
 shopping that buy milk"* names the file `shopping` instead of swallowing the
 whole phrase as the note text.
 
+## The sidebar panel
+
+**S3 Files** appears in the sidebar once the integration is set up. It is a file
+browser for the folder you scoped the integration to: open a folder to walk into
+it, click a file to read and edit it, create new files, and delete them.
+
+It follows the permission switches, so it never offers something the integration
+would refuse:
+
+| Permission off | What the panel does |
+| --- | --- |
+| List files | Explains that browsing is switched off instead of showing a list |
+| Read files | Files are not clickable |
+| Create and overwrite | No New file button, and the editor becomes read only |
+| Delete files | No delete button on any row |
+
+Deleting always asks first, and says that an S3 delete cannot be undone.
+
+Everything is served by the integration itself — there is nothing to add to your
+dashboard and no resource URL to configure. The panel is a normal Home Assistant
+panel, so it appears in the sidebar with `mdi:folder-network-outline` and works
+on mobile.
+
 ## How paths and scope work
 
 - Paths are always relative to your configured folder. A leading `/` or a
@@ -242,6 +268,18 @@ scripts/dev_setup.sh
 .venv/bin/python -m pytest
 .venv/bin/python -m pyflakes custom_components/s3_files tests
 ```
+
+The sidebar panel is a Lit frontend under `panel/`:
+
+```bash
+cd panel
+npm ci
+npm run lint && npm run typecheck && npm test
+npm run build          # writes custom_components/s3_files/www/s3-files-panel.js
+```
+
+The built bundle is committed, because that is what the integration serves, and
+CI fails if it does not match a fresh build.
 
 The S3 layer is tested against [moto](https://github.com/getmoto/moto), which
 intercepts botocore at the HTTP layer, so the real boto3 code path is exercised

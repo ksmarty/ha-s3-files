@@ -19,6 +19,9 @@ them unless the task explicitly overrides them.
   get it via `s3_files.install_sentences` or `scripts/install_custom_sentences.sh`.
   Do not add a second copy at the repo root — the sibling project has two that
   drifted.
+- **`panel/`** — the sidebar panel frontend (TypeScript + Vite + Lit). Its build
+  output lands in `custom_components/s3_files/www/` and is committed, because
+  that is what the integration serves.
 - **`tests/`** — pytest. Pure logic runs without Home Assistant; the rest uses
   `pytest.importorskip` and runs in CI.
 - **`scripts/`** — dev setup, the sentence installer, the brand asset generator.
@@ -59,6 +62,9 @@ them unless the task explicitly overrides them.
 - Keep `services.yaml`, the voluptuous schemas and `SERVICE_FIELDS` in step —
   `tests/test_services_yaml.py` checks both directions.
 - Keep `strings.json` and `translations/en.json` identical.
+- Rebuild the panel when `panel/src` changes and commit the whole
+  `custom_components/s3_files/www/` directory. CI fails if the committed bundle
+  does not match a fresh build.
 
 ### Ask first
 
@@ -103,6 +109,11 @@ python3 -m compileall -q custom_components/s3_files
 
 # Regenerate the brand assets from assets/brand-source.jpeg
 .venv/bin/python scripts/make_brand_assets.py
+
+# Sidebar panel
+cd panel && npm ci
+npm run lint && npm run typecheck && npm test
+npm run build          # writes custom_components/s3_files/www/s3-files-panel.js
 ```
 
 Verify in **both** Python environments, because pip resolves a different Home
@@ -134,6 +145,8 @@ that silently skips everywhere is worse than no test.
 - `.github/workflows/validate.yaml`: a Python matrix (3.12, 3.13) running
   `compileall`, `pyflakes`, and `pytest` with `homeassistant boto3 moto hassil`
   installed, plus the HACS action on `main` only.
+- `.github/workflows/build-panel.yaml`: `npm ci`, lint, typecheck, test, build,
+  then a **dist-drift check** — the committed bundle must match a fresh build.
 - Keep actions on current majors (Node 24). Check `gh run list` for Node
   deprecation annotations after editing a workflow.
 - HACS validation needs brand assets under `custom_components/s3_files/brand/`
@@ -188,3 +201,17 @@ Release steps (after approval):
 - **A disabled permission raises `S3PermissionError` in services** but
   `IntentHandleError` in intents, because one is read by a log and the other
   spoken out loud.
+- **Ask for the service response.** `hass.callService(domain, service, data,
+  undefined, false, true)` — the last argument is what makes Home Assistant
+  return the response. Without it every call in `panel/src/api.ts` comes back
+  empty, and the panel silently shows nothing.
+- **Bind properties, not attributes, on HA elements.** `.heading=${...}` works;
+  `heading="..."` is only an attribute and the element will not read it as a
+  property — a dialog then renders with no heading, and a test looking for it by
+  property finds nothing.
+- **`ha-dialog` needs `<ha-dialog-footer slot="footer">`** around its buttons,
+  or they do not render at all.
+- **The panel element must expose `hass`, `narrow`, `route` and `panel`** as
+  settable properties: Home Assistant assigns all four onto it.
+- **esbuild's postinstall must stay allowed** (`allowScripts` in
+  `panel/package.json`), or `npm ci` silently skips it and the build fails.

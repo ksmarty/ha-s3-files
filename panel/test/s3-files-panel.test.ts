@@ -1,0 +1,307 @@
+/**
+ * The panel element.
+ *
+ * Driven through a fake `hass`, so these exercise the real render and click
+ * paths: which rows appear, what a click does, and — importantly — that a
+ * switched-off permission removes the control rather than failing on use.
+ */
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import "../src/s3-files-panel";
+import type { HomeAssistant } from "../src/types";
+
+interface Call {
+  service: string;
+  data: Record<string, unknown>;
+}
+
+const FULL_PERMISSIONS = {
+  allow_list: true,
+  allow_read: true,
+  allow_write: true,
+  allow_delete: true,
+  allow_move: false,
+  allow_mkdir: false,
+};
+
+function entry(path: string, name: string, isFolder = false) {
+  return {
+    path,
+    name,
+    is_folder: isFolder,
+    size: isFolder ? null : 12,
+    last_modified: "2026-09-14T10:00:00Z",
+  };
+}
+
+interface Setup {
+  permissions?: Partial<typeof FULL_PERMISSIONS>;
+  files?: Record<string, unknown[]>;
+  contents?: Record<string, string>;
+  fail?: Record<string, string>;
+}
+
+function makeHass(setup: Setup) {
+  const calls: Call[] = [];
+  const info = {
+    bucket: "ha-files",
+    scope: "Mini Notes",
+    notes_folder: "",
+    permissions: { ...FULL_PERMISSIONS, ...(setup.permissions ?? {}) },
+  };
+
+  const hass = {
+    callService: async (
+      _domain: string,
+      service: string,
+      data: Record<string, unknown> = {},
+    ) => {
+      calls.push({ service, data });
+      if (setup.fail?.[service]) throw new Error(setup.fail[service]);
+
+      switch (service) {
+        case "get_info":
+          return info;
+        case "list_files":
+          return { files: setup.files?.[String(data.path ?? "")] ?? [] };
+        case "read_file":
+          return { content: setup.contents?.[String(data.path)] ?? "" };
+        case "write_file":
+          return { path: data.path, size: String(data.content ?? "").length };
+        default:
+          return {};
+      }
+    },
+  } as unknown as HomeAssistant;
+
+  return { hass, calls, info };
+}
+
+/** Let the element finish its async load and re-render. */
+async function flush(element: Element, rounds = 6): Promise<void> {
+  for (let i = 0; i < rounds; i += 1) {
+    await (
+      element as unknown as { updateComplete: Promise<unknown> }
+    ).updateComplete;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+async function mount(setup: Setup) {
+  const { hass, calls } = makeHass(setup);
+  const element = document.createElement("s3-files-panel") as HTMLElement;
+  (element as unknown as { hass: HomeAssistant }).hass = hass;
+  document.body.append(element);
+  await flush(element);
+  return { element, calls, shadow: element.shadowRoot! };
+}
+
+function rows(shadow: ShadowRoot): HTMLElement[] {
+  return Array.from(shadow.querySelectorAll<HTMLElement>(".row"));
+}
+
+function click(target: Element | null | undefined): void {
+  (target as HTMLElement).click();
+}
+
+function editorDialog(shadow: ShadowRoot) {
+  return Array.from(shadow.querySelectorAll("ha-dialog")).find((dialog) => {
+    const heading = (dialog as unknown as { heading?: string }).heading ?? "";
+    return heading === "New file" || heading === "Edit file";
+  }) as (HTMLElement & { heading?: string }) | undefined;
+}
+
+function saveButton(shadow: ShadowRoot): Element | null {
+  return editorDialog(shadow)?.querySelector('ha-button[slot="primaryAction"]') ?? null;
+}
+
+afterEach(() => {
+  document.body.innerHTML = "";
+});
+
+describe("S3 files panel", () => {
+  it("lists the files and folders in the scope", async () => {
+    const { shadow } = await mount({
+      files: {
+        "": [entry("Notes", "Notes", true), entry("Buy milk.md", "Buy milk.md")],
+      },
+    });
+
+    expect(rows(shadow)).toHaveLength(2);
+    expect(rows(shadow)[0].textContent).toContain("Notes");
+    expect(rows(shadow)[1].textContent).toContain("Buy milk.md");
+    // Folders are listed first even when the response is in another order.
+    expect(rows(shadow)[0].textContent).toContain("Folder");
+  });
+
+  it("shows which bucket and folder it is browsing", async () => {
+    const { shadow } = await mount({ files: { "": [] } });
+    expect(shadow.textContent).toContain("Mini Notes");
+    expect(shadow.textContent).toContain("ha-files");
+  });
+
+  it("says so when the folder is empty", async () => {
+    const { shadow } = await mount({ files: { "": [] } });
+    expect(shadow.textContent).toContain("Nothing here yet");
+  });
+
+  it("browses into a folder when it is clicked", async () => {
+    const { shadow, calls } = await mount({
+      files: {
+        "": [entry("Notes", "Notes", true)],
+        Notes: [entry("Notes/a.md", "a.md")],
+      },
+    });
+
+    click(rows(shadow)[0].querySelector(".row-text"));
+    await flush(shadow.host);
+
+    expect(calls.filter((call) => call.service === "list_files").at(-1)?.data).toEqual(
+      { path: "Notes" },
+    );
+    expect(rows(shadow)[0].textContent).toContain("a.md");
+  });
+
+  it("opens a file for editing and loads its contents", async () => {
+    const { shadow, calls } = await mount({
+      files: { "": [entry("Buy milk.md", "Buy milk.md")] },
+      contents: { "Buy milk.md": "buy milk" },
+    });
+
+    click(rows(shadow)[0].querySelector(".row-text"));
+    await flush(shadow.host);
+
+    expect(calls.some((call) => call.service === "read_file")).toBe(true);
+    const form = editorDialog(shadow)?.querySelector("ha-form");
+    expect((form as unknown as { data: { content: string } }).data.content).toBe(
+      "buy milk",
+    );
+  });
+
+  it("saves an edited file with overwrite on", async () => {
+    const { shadow, calls } = await mount({
+      files: { "": [entry("a.md", "a.md")] },
+      contents: { "a.md": "old" },
+    });
+
+    click(rows(shadow)[0].querySelector(".row-text"));
+    await flush(shadow.host);
+
+    const form = editorDialog(shadow)!.querySelector("ha-form")!;
+    form.dispatchEvent(
+      new CustomEvent("value-changed", {
+        detail: { value: { path: "a.md", content: "new" } },
+      }),
+    );
+    await flush(shadow.host);
+    click(saveButton(shadow));
+    await flush(shadow.host);
+
+    const written = calls.find((call) => call.service === "write_file");
+    expect(written?.data).toEqual({
+      path: "a.md",
+      content: "new",
+      overwrite: true,
+    });
+  });
+
+  it("hides the editor behind a clear message for binary files", async () => {
+    const { shadow, calls } = await mount({
+      files: { "": [entry("photo.png", "photo.png")] },
+    });
+
+    click(rows(shadow)[0].querySelector(".row-text"));
+    await flush(shadow.host);
+
+    expect(shadow.textContent).toContain("not look like a text file");
+    // It should not even try to read it as text.
+    expect(calls.some((call) => call.service === "read_file")).toBe(false);
+  });
+
+  it("deletes a file only after confirmation", async () => {
+    const { shadow, calls } = await mount({
+      files: { "": [entry("a.md", "a.md")] },
+    });
+
+    const deleteButton = rows(shadow)[0].querySelector('ha-button[title="Delete"]');
+    expect(deleteButton).not.toBeNull();
+
+    click(deleteButton);
+    await flush(shadow.host);
+    // Nothing has been deleted yet: the dialog is asking first.
+    expect(calls.some((call) => call.service === "delete_file")).toBe(false);
+
+    const confirm = Array.from(shadow.querySelectorAll("ha-dialog"))
+      .find((dialog) => (dialog as unknown as { heading?: string }).heading === "Delete file")
+      ?.querySelector('ha-button[slot="primaryAction"]');
+    click(confirm);
+    await flush(shadow.host);
+
+    expect(calls.find((call) => call.service === "delete_file")?.data).toEqual({
+      path: "a.md",
+    });
+  });
+});
+
+describe("permissions drive what the panel offers", () => {
+  it("opens a file read only when writing is off", async () => {
+    const { shadow } = await mount({
+      permissions: { allow_write: false },
+      files: { "": [entry("a.md", "a.md")] },
+      contents: { "a.md": "hello" },
+    });
+
+    expect(shadow.textContent).not.toContain("New file");
+
+    // The contents are still worth reading, so the editor opens...
+    click(rows(shadow)[0].querySelector(".row-text"));
+    await flush(shadow.host);
+    expect(editorDialog(shadow)).toBeDefined();
+
+    // ...but there is nothing to save it with, and the panel says why.
+    expect(saveButton(shadow)).toBeNull();
+    expect(shadow.textContent).toContain("Writing is switched off");
+  });
+
+  it("offers no delete when deleting is off", async () => {
+    const { shadow } = await mount({
+      permissions: { allow_delete: false },
+      files: { "": [entry("a.md", "a.md")] },
+    });
+
+    expect(rows(shadow)[0].querySelector('ha-button[title="Delete"]')).toBeNull();
+  });
+
+  it("explains itself when listing is off", async () => {
+    const { shadow, calls } = await mount({ permissions: { allow_list: false } });
+
+    expect(shadow.textContent).toContain("Listing is switched off");
+    expect(calls.some((call) => call.service === "list_files")).toBe(false);
+  });
+
+  it("does not make files clickable when reading is off", async () => {
+    const { shadow, calls } = await mount({
+      permissions: { allow_read: false },
+      files: { "": [entry("a.md", "a.md"), entry("Notes", "Notes", true)] },
+    });
+
+    const fileRow = rows(shadow).find((row) => row.textContent?.includes("a.md"))!;
+    expect(fileRow.getAttribute("data-clickable")).toBe("false");
+
+    click(fileRow.querySelector(".row-text"));
+    await flush(shadow.host);
+    expect(calls.some((call) => call.service === "read_file")).toBe(false);
+  });
+});
+
+describe("failures", () => {
+  it("shows the error the integration reported", async () => {
+    const { shadow } = await mount({
+      files: { "": [entry("a.md", "a.md")] },
+      fail: { list_files: "The S3 credentials are not allowed to list files." },
+    });
+
+    expect(shadow.textContent).toContain("not allowed to list files");
+  });
+});

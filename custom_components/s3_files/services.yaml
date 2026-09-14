@@ -126,6 +126,11 @@ create_folder:
       selector:
         text: {}
 
+get_info:
+  name: Get integration info
+  description: Report the bucket, folder scope and permissions. The sidebar panel calls this to decide what it may offer.
+  fields: {}
+
 install_sentences:
   name: Install voice sentences
   description: Copy the packaged Assist sentence templates into your Home Assistant config directory and reload the conversation agent. Custom sentences cannot be installed by HACS, so this is a one-time setup step.

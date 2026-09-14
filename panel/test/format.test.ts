@@ -1,0 +1,192 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  baseName,
+  breadcrumbs,
+  describeEntry,
+  extensionOf,
+  humanSize,
+  iconFor,
+  isTextFile,
+  joinPath,
+  parentPath,
+  sortEntries,
+} from "../src/format";
+import type { S3Entry } from "../src/types";
+
+function entry(path: string, overrides: Partial<S3Entry> = {}): S3Entry {
+  return {
+    path,
+    name: baseName(path),
+    is_folder: false,
+    size: null,
+    last_modified: null,
+    ...overrides,
+  };
+}
+
+describe("baseName and extensionOf", () => {
+  it("takes the last segment", () => {
+    expect(baseName("notes/2026/today.md")).toBe("today.md");
+    expect(baseName("today.md")).toBe("today.md");
+    expect(baseName("notes/")).toBe("notes");
+    expect(baseName("")).toBe("");
+  });
+
+  it("reads the extension", () => {
+    expect(extensionOf("notes/Today.MD")).toBe("md");
+    expect(extensionOf("archive.tar.gz")).toBe("gz");
+    // A dotfile is not an extension.
+    expect(extensionOf(".gitignore")).toBe("");
+    expect(extensionOf("README")).toBe("");
+  });
+});
+
+describe("joinPath", () => {
+  it("joins a folder and a name", () => {
+    expect(joinPath("notes", "today.md")).toBe("notes/today.md");
+    expect(joinPath("notes/sub", "today.md")).toBe("notes/sub/today.md");
+  });
+
+  it("handles the scope root", () => {
+    expect(joinPath("", "today.md")).toBe("today.md");
+    expect(joinPath("notes", "")).toBe("notes");
+  });
+
+  it("does not produce doubled separators", () => {
+    expect(joinPath("notes/", "/today.md")).toBe("notes/today.md");
+    expect(joinPath("/notes/", "today.md")).toBe("notes/today.md");
+  });
+});
+
+describe("parentPath", () => {
+  it("walks back up", () => {
+    expect(parentPath("notes/sub/today.md")).toBe("notes/sub");
+    expect(parentPath("notes/today.md")).toBe("notes");
+    expect(parentPath("today.md")).toBe("");
+  });
+
+  it("tolerates a trailing separator", () => {
+    expect(parentPath("notes/sub/")).toBe("notes");
+  });
+});
+
+describe("breadcrumbs", () => {
+  it("starts at the root label", () => {
+    expect(breadcrumbs("", "Mini Notes")).toEqual([
+      { label: "Mini Notes", path: "" },
+    ]);
+  });
+
+  it("builds a crumb per segment with cumulative paths", () => {
+    expect(breadcrumbs("notes/2026", "Mini Notes")).toEqual([
+      { label: "Mini Notes", path: "" },
+      { label: "notes", path: "notes" },
+      { label: "2026", path: "notes/2026" },
+    ]);
+  });
+
+  it("ignores empty segments", () => {
+    expect(breadcrumbs("notes//2026/", "Files")).toEqual([
+      { label: "Files", path: "" },
+      { label: "notes", path: "notes" },
+      { label: "2026", path: "notes/2026" },
+    ]);
+  });
+});
+
+describe("humanSize", () => {
+  it("formats bytes", () => {
+    expect(humanSize(0)).toBe("0 B");
+    expect(humanSize(999)).toBe("999 B");
+    expect(humanSize(1024)).toBe("1.0 KB");
+    expect(humanSize(1536)).toBe("1.5 KB");
+    expect(humanSize(1024 * 1024)).toBe("1.0 MB");
+  });
+
+  it("drops the decimal once the number is large", () => {
+    expect(humanSize(50 * 1024)).toBe("50 KB");
+  });
+
+  it("says nothing for a missing size", () => {
+    expect(humanSize(null)).toBe("");
+    expect(humanSize(undefined)).toBe("");
+  });
+});
+
+describe("isTextFile", () => {
+  it("accepts text documents", () => {
+    for (const path of [
+      "notes.md",
+      "notes.txt",
+      "data.json",
+      "config.yaml",
+      "README",
+      ".gitignore",
+    ]) {
+      expect(isTextFile(path), path).toBe(true);
+    }
+  });
+
+  it("rejects binaries", () => {
+    for (const path of ["photo.png", "archive.zip", "song.mp3", "doc.pdf"]) {
+      expect(isTextFile(path), path).toBe(false);
+    }
+  });
+});
+
+describe("iconFor", () => {
+  it("uses a folder icon for folders", () => {
+    expect(iconFor(entry("notes", { is_folder: true }))).toBe("mdi:folder-outline");
+  });
+
+  it("picks an icon by extension", () => {
+    expect(iconFor(entry("notes.md"))).toBe("mdi:language-markdown");
+    expect(iconFor(entry("data.json"))).toBe("mdi:code-json");
+  });
+
+  it("falls back for anything unknown", () => {
+    expect(iconFor(entry("weird.qqq"))).toBe("mdi:file-outline");
+  });
+});
+
+describe("describeEntry", () => {
+  it("labels a folder", () => {
+    expect(describeEntry(entry("notes", { is_folder: true }))).toBe("Folder");
+  });
+
+  it("shows size and date for a file", () => {
+    expect(
+      describeEntry(
+        entry("notes.md", { size: 2048, last_modified: "2026-09-14T10:00:00Z" }),
+      ),
+    ).toBe("2.0 KB · 2026-09-14");
+  });
+
+  it("copes with missing metadata", () => {
+    expect(describeEntry(entry("notes.md"))).toBe("");
+  });
+});
+
+describe("sortEntries", () => {
+  it("puts folders first, then sorts by name ignoring case", () => {
+    const sorted = sortEntries([
+      entry("banana.md"),
+      entry("zeta", { is_folder: true }),
+      entry("Apple.md"),
+      entry("alpha", { is_folder: true }),
+    ]);
+    expect(sorted.map((item) => item.path)).toEqual([
+      "alpha",
+      "zeta",
+      "Apple.md",
+      "banana.md",
+    ]);
+  });
+
+  it("does not reorder the caller's array", () => {
+    const original = [entry("b.md"), entry("a.md")];
+    sortEntries(original);
+    expect(original.map((item) => item.path)).toEqual(["b.md", "a.md"]);
+  });
+});

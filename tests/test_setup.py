@@ -116,6 +116,7 @@ def test_setup_registers_the_enabled_services_and_intents():
         SERVICE_WRITE_FILE,
         "create_folder",
         "install_sentences",
+        "get_info",
     }
     assert set(hass.data[DOMAIN]["intents"]) == {
         INTENT_CREATE_NOTE,
@@ -214,5 +215,6 @@ def test_setup_with_everything_off_registers_no_bucket_actions():
     run(async_setup_entry(hass, entry))
 
     assert hass.data[DOMAIN]["intents"] == []
-    assert hass.data[DOMAIN]["services"] == ["install_sentences"]
+    # Only the two setup/support services survive.
+    assert set(hass.data[DOMAIN]["services"]) == {"install_sentences", "get_info"}
     assert intents_module.async_setup_intents(hass, get_hub(hass)) == []

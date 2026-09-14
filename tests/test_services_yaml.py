@@ -16,6 +16,7 @@ from custom_components.s3_files import services
 from custom_components.s3_files.const import (
     SERVICE_CREATE_FOLDER,
     SERVICE_DELETE_FILE,
+    SERVICE_GET_INFO,
     SERVICE_INSTALL_SENTENCES,
     SERVICE_LIST_FILES,
     SERVICE_MOVE_FILE,
@@ -34,7 +35,10 @@ def documented() -> dict:
 
 
 def test_every_service_is_documented(documented):
-    expected = set(services.SERVICE_DEFINITIONS) | {SERVICE_INSTALL_SENTENCES}
+    expected = set(services.SERVICE_DEFINITIONS) | {
+        SERVICE_INSTALL_SENTENCES,
+        SERVICE_GET_INFO,
+    }
     assert set(documented) == expected
 
 

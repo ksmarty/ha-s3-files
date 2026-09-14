@@ -22,6 +22,9 @@ anything else that speaks the S3 API.
 - Home Assistant 2024.6 or newer
 - HACS 2.x, or a manual install
 - A bucket that already exists, and credentials that can reach it
+- The only Python dependency is `boto3`, which Home Assistant installs for you.
+  It is declared as `>=1.34,<2` rather than an exact version on purpose — see
+  [Why boto3 is not pinned exactly](#why-boto3-is-not-pinned-exactly).
 
 ## Installation
 
@@ -187,6 +190,32 @@ page. The secret is redacted automatically.
   integration's switches are a second line of defence, not a replacement for a
   scoped IAM policy.
 
+## Why boto3 is not pinned exactly
+
+The manifest declares `boto3>=1.34,<2.0` instead of a single version.
+
+Home Assistant installs every integration's Python requirements into one shared
+environment. If two custom integrations pin *different exact* versions of the
+same library, whichever installs last wins and the other one is left with a
+version it did not ask for — a confusing failure that has nothing to do with
+either integration's code. A range lets pip pick one version that satisfies
+both.
+
+An exact pin would normally be the more reproducible choice, and it is what
+most integrations do. It is safe to loosen here because:
+
+- Home Assistant itself does **not** ship boto3, so there is no risk of
+  fighting the platform's own dependency — only of colliding with another
+  custom integration;
+- the S3 calls this integration makes (`head_bucket`, `list_objects_v2` with a
+  paginator, `get_object`, `put_object`, `copy_object`, `delete_object`) have
+  been stable for many years;
+- the `<2.0` bound still stops a future breaking major from being pulled in
+  without anyone noticing.
+
+`tests/test_manifest.py` fails if the requirement is changed back to an exact
+pin, so the reasoning above is not just a comment someone can forget.
+
 ## Development
 
 ```bash
@@ -203,8 +232,10 @@ CI runs on Python 3.12 and 3.13. On 3.12 pip resolves an older Home Assistant
 that has no LLM tool helpers, so the LLM tool tests skip there; they run in
 full on 3.13.
 
-Brand assets are placeholders. `scripts/make_brand_assets.py` regenerates them;
-replace them with real artwork before publishing.
+Brand assets are generated from `assets/brand-source.jpeg` by
+`scripts/make_brand_assets.py`, which writes both `brands/` (what HACS reads)
+and `custom_components/s3_files/brand/` (what newer Home Assistant versions
+read). Replace the source file and re-run the script to update them.
 
 ## Credits
 

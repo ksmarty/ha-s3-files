@@ -1,97 +1,65 @@
 #!/usr/bin/env python3
-"""Generate the placeholder brand assets for S3 Files.
+"""Generate the brand assets for S3 Files from the source artwork.
 
-These are deliberately simple placeholders — replace them with real artwork
-before publishing to the HACS default repository. Run with the repo's venv:
+Home Assistant reads brand images from `custom_components/s3_files/brand/` and
+HACS reads them from `brands/`; both are written here from one source so they
+cannot drift. Run with the repo's venv:
 
     .venv/bin/python scripts/make_brand_assets.py
 
-Writes icon.png / icon@2x.png / logo.png / logo@2x.png into both `brands/`
-(what HACS reads) and `custom_components/s3_files/brand/` (what newer Home
-Assistant versions read).
+The source (`assets/brand-source.jpeg`) is a full-bleed square badge with no
+transparency, so the icons are used as-is rather than trimmed — trimming would
+remove the blue background that is part of the artwork. The wide logo
+letterboxes the badge on transparency instead of cropping it, keeping the mark
+intact.
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
+SOURCE = ROOT / "assets" / "brand-source.jpeg"
 TARGET_DIRS = (ROOT / "brands", ROOT / "custom_components" / "s3_files" / "brand")
 
-BACKGROUND = (63, 81, 181, 255)  # indigo
-MARK = (255, 255, 255, 255)
+ICON_SIZES = (256, 512)
+LOGO_SIZES = ((1280, 720), (2560, 1440))
+# The badge keeps a little breathing room inside the wide canvas.
+LOGO_FILL = 0.92
 
 
-def _bucket(size: int) -> Image.Image:
-    """Draw a storage bucket centred on a solid background."""
-    image = Image.new("RGBA", (size, size), BACKGROUND)
-    draw = ImageDraw.Draw(image)
-
-    width = size * 0.46
-    top = size * 0.30
-    bottom = size * 0.74
-    left = (size - width) / 2
-    right = left + width
-
-    # Tapered body.
-    taper = width * 0.14
-    draw.polygon(
-        [
-            (left, top),
-            (right, top),
-            (right - taper, bottom),
-            (left + taper, bottom),
-        ],
-        fill=MARK,
-    )
-
-    # Rim, drawn as a flattened ellipse to read as a 3D opening.
-    rim_height = size * 0.055
-    draw.ellipse(
-        [left - size * 0.012, top - rim_height, right + size * 0.012, top + rim_height],
-        fill=MARK,
-    )
-    draw.ellipse(
-        [
-            left - size * 0.012 + size * 0.022,
-            top - rim_height + size * 0.014,
-            right + size * 0.012 - size * 0.022,
-            top + rim_height - size * 0.014,
-        ],
-        fill=BACKGROUND,
-    )
-
-    # Two bands, so the mark reads as a bucket rather than a cone.
-    for offset in (0.34, 0.52):
-        y = bottom - (bottom - top) * offset
-        inset = taper * (1 - offset) + width * 0.06
-        draw.line([(left + inset, y), (right - inset, y)], fill=BACKGROUND, width=max(2, int(size * 0.022)))
-
-    return image
+def _load() -> Image.Image:
+    if not SOURCE.is_file():
+        raise SystemExit(f"error: no source artwork at {SOURCE}")
+    return Image.open(SOURCE).convert("RGBA")
 
 
-def _icon(size: int) -> Image.Image:
-    return _bucket(size)
+def _icon(source: Image.Image, size: int) -> Image.Image:
+    return source.resize((size, size), Image.LANCZOS)
 
 
-def _logo(width: int, height: int) -> Image.Image:
-    """The mark on a transparent canvas, as HACS expects for a wide logo."""
-    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    mark_size = int(height * 0.92)
-    mark = _bucket(mark_size)
-    image.paste(mark, ((width - mark_size) // 2, (height - mark_size) // 2), mark)
-    return image
+def _logo(source: Image.Image, width: int, height: int) -> Image.Image:
+    canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    mark_size = int(height * LOGO_FILL)
+    mark = source.resize((mark_size, mark_size), Image.LANCZOS)
+    canvas.paste(mark, ((width - mark_size) // 2, (height - mark_size) // 2), mark)
+    return canvas
 
 
 def main() -> None:
-    assets = {
-        "icon.png": _icon(256),
-        "icon@2x.png": _icon(512),
-        "logo.png": _logo(1280, 720),
-        "logo@2x.png": _logo(2560, 1440),
-    }
+    source = _load()
+
+    assets: dict[str, Image.Image] = {}
+    for size in ICON_SIZES:
+        name = "icon.png" if size == ICON_SIZES[0] else f"icon@{size // ICON_SIZES[0]}x.png"
+        assets[name] = _icon(source, size)
+    for width, height in LOGO_SIZES:
+        name = "logo.png" if width == LOGO_SIZES[0][0] else "logo@2x.png"
+        assets[name] = _logo(source, width, height)
+
     for directory in TARGET_DIRS:
         directory.mkdir(parents=True, exist_ok=True)
         for name, image in assets.items():
@@ -101,4 +69,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

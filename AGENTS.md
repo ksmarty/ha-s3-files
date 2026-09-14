@@ -82,6 +82,14 @@ them unless the task explicitly overrides them.
   `take a note[ that] {note}`.
 - Log or serialise the secret access key. `tests/test_diagnostics.py` asserts it
   never appears in diagnostics.
+- Pin `boto3` to an exact version in `manifest.json`. It is declared as a range
+  on purpose: Home Assistant installs all integrations' requirements into one
+  shared environment, so two exact pins of the same library leave whichever
+  installed last winning. `tests/test_manifest.py` enforces the range, and the
+  README explains the reasoning.
+- Edit a brand asset by hand. They are generated from
+  `assets/brand-source.jpeg`; regenerate both copies with
+  `scripts/make_brand_assets.py` (a test checks the two copies match).
 
 ## Commands
 
@@ -93,7 +101,7 @@ them unless the task explicitly overrides them.
 .venv/bin/python -m pyflakes custom_components/s3_files tests
 python3 -m compileall -q custom_components/s3_files
 
-# Regenerate the placeholder brand assets
+# Regenerate the brand assets from assets/brand-source.jpeg
 .venv/bin/python scripts/make_brand_assets.py
 ```
 

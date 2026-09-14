@@ -206,6 +206,18 @@ Release steps (after approval):
 - **A disabled permission raises `S3PermissionError` in services** but
   `IntentHandleError` in intents, because one is read by a log and the other
   spoken out loud.
+- **The panel's editor uses native `input` and `textarea`, deliberately.**
+  This repo has twice been bitten by Home Assistant form controls that changed
+  shape or silently rendered nothing — the reported "new file saved with no
+  contents" came from that class of problem. Do not reintroduce a form schema
+  (`ha-form`) in the editor without a way to test it in a real browser.
+- **Row actions live in `ha-icon-overflow-menu`**, whose items take an mdi SVG
+  `path` (from `@mdi/js`) rather than an icon name. An icon-only `ha-button` is
+  not a reliable affordance for anything destructive: use a labelled menu item.
+- **A new file's name field must start empty.** It holds the name only; the
+  folder is joined on save and shown underneath. Pre-filling it with the folder
+  made the folder be duplicated into the name or dropped entirely, and the
+  extension was never added.
 - **Ask for the service response — and unwrap it.** `hass.callService(domain,
   service, data, undefined, false, true)`; the last argument is what makes Home
   Assistant return anything. What comes back is an **envelope**,

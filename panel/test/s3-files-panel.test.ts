@@ -131,6 +131,40 @@ function saveButton(shadow: ShadowRoot): Element | null {
   return editorDialog(shadow)?.querySelector('ha-button[slot="primaryAction"]') ?? null;
 }
 
+function editorTextarea(shadow: ShadowRoot): HTMLTextAreaElement {
+  return editorDialog(shadow)!.querySelector("textarea.markdown") as HTMLTextAreaElement;
+}
+
+/** Type into the editor's textarea, as a user would. */
+function typeContent(shadow: ShadowRoot, value: string): void {
+  const area = editorTextarea(shadow);
+  area.value = value;
+  area.dispatchEvent(new Event("input"));
+}
+
+/** Type into the new-file name field. */
+function typeName(shadow: ShadowRoot, value: string): void {
+  const input = editorDialog(shadow)!.querySelector("input") as HTMLInputElement;
+  input.value = value;
+  input.dispatchEvent(new Event("input"));
+}
+
+/** The per-row action menu: the element itself is not implemented in jsdom, so
+ * its items are read and invoked directly. */
+function menuItems(
+  shadow: ShadowRoot,
+  index = 0,
+): { label: string; action: () => void }[] {
+  const menu = rows(shadow)[index].querySelector("ha-icon-overflow-menu") as
+    | (HTMLElement & { items?: { label: string; action: () => void }[] })
+    | null;
+  return menu?.items ?? [];
+}
+
+function menuAction(shadow: ShadowRoot, label: string, index = 0): (() => void) | undefined {
+  return menuItems(shadow, index).find((item) => item.label === label)?.action;
+}
+
 afterEach(() => {
   document.body.innerHTML = "";
 });
@@ -188,10 +222,7 @@ describe("S3 files panel", () => {
     await flush(shadow.host);
 
     expect(calls.some((call) => call.service === "read_file")).toBe(true);
-    const form = editorDialog(shadow)?.querySelector("ha-form");
-    expect((form as unknown as { data: { content: string } }).data.content).toBe(
-      "buy milk",
-    );
+    expect(editorTextarea(shadow).value).toBe("buy milk");
   });
 
   it("saves an edited file with overwrite on", async () => {
@@ -203,12 +234,7 @@ describe("S3 files panel", () => {
     click(rows(shadow)[0].querySelector(".row-text"));
     await flush(shadow.host);
 
-    const form = editorDialog(shadow)!.querySelector("ha-form")!;
-    form.dispatchEvent(
-      new CustomEvent("value-changed", {
-        detail: { value: { path: "a.md", content: "new" } },
-      }),
-    );
+    typeContent(shadow, "new");
     await flush(shadow.host);
     click(saveButton(shadow));
     await flush(shadow.host);
@@ -239,10 +265,10 @@ describe("S3 files panel", () => {
       files: { "": [entry("a.md", "a.md")] },
     });
 
-    const deleteButton = rows(shadow)[0].querySelector('ha-button[title="Delete"]');
-    expect(deleteButton).not.toBeNull();
+    const remove = menuAction(shadow, "Delete");
+    expect(remove).toBeDefined();
 
-    click(deleteButton);
+    remove!();
     await flush(shadow.host);
     // Nothing has been deleted yet: the dialog is asking first.
     expect(calls.some((call) => call.service === "delete_file")).toBe(false);
@@ -256,6 +282,200 @@ describe("S3 files panel", () => {
     expect(calls.find((call) => call.service === "delete_file")?.data).toEqual({
       path: "a.md",
     });
+  });
+
+  it("can delete from the editor as well as the row", async () => {
+    const { shadow, calls } = await mount({
+      files: { "": [entry("a.md", "a.md")] },
+      contents: { "a.md": "hi" },
+    });
+
+    click(rows(shadow)[0].querySelector(".row-text"));
+    await flush(shadow.host);
+
+    const deleteInDialog = Array.from(
+      editorDialog(shadow)!.querySelectorAll('ha-button[slot="secondaryAction"]'),
+    ).find((button) => button.textContent?.trim() === "Delete");
+    expect(deleteInDialog).toBeDefined();
+
+    click(deleteInDialog);
+    await flush(shadow.host);
+    click(
+      Array.from(shadow.querySelectorAll("ha-dialog"))
+        .find((dialog) => (dialog as unknown as { heading?: string }).heading === "Delete file")
+        ?.querySelector('ha-button[slot="primaryAction"]'),
+    );
+    await flush(shadow.host);
+
+    expect(calls.find((call) => call.service === "delete_file")?.data).toEqual({
+      path: "a.md",
+    });
+  });
+});
+
+describe("creating a file", () => {
+  it("saves the name and the contents together, with a markdown extension", async () => {
+    const { shadow, calls } = await mount({ files: { "": [] } });
+
+    click(
+      Array.from(shadow.querySelectorAll("ha-button")).find((button) =>
+        button.textContent?.includes("New file"),
+      ),
+    );
+    await flush(shadow.host);
+
+    typeName(shadow, "Shopping list");
+    typeContent(shadow, "- milk\n- bread");
+    await flush(shadow.host);
+
+    // The name field is empty and the destination is shown separately.
+    expect(shadow.textContent).toContain("Saved to Shopping list.md");
+
+    click(saveButton(shadow));
+    await flush(shadow.host);
+
+    expect(calls.find((call) => call.service === "write_file")?.data).toEqual({
+      path: "Shopping list.md",
+      content: "- milk\n- bread",
+      overwrite: true,
+    });
+  });
+
+  it("keeps a name that already has an extension", async () => {
+    const { shadow, calls } = await mount({ files: { "": [] } });
+
+    click(
+      Array.from(shadow.querySelectorAll("ha-button")).find((button) =>
+        button.textContent?.includes("New file"),
+      ),
+    );
+    await flush(shadow.host);
+
+    typeName(shadow, "notes.txt");
+    typeContent(shadow, "hello");
+    await flush(shadow.host);
+    click(saveButton(shadow));
+    await flush(shadow.host);
+
+    expect(calls.find((call) => call.service === "write_file")?.data.path).toBe(
+      "notes.txt",
+    );
+  });
+
+  it("creates the file inside the folder being browsed", async () => {
+    const { shadow, calls } = await mount({
+      files: { "": [entry("Journal", "Journal", true)], Journal: [] },
+    });
+
+    click(rows(shadow)[0].querySelector(".row-text"));
+    await flush(shadow.host);
+
+    click(
+      Array.from(shadow.querySelectorAll("ha-button")).find((button) =>
+        button.textContent?.includes("New file"),
+      ),
+    );
+    await flush(shadow.host);
+
+    // The name field must not be pre-filled with the folder, or the folder
+    // would be lost or duplicated into the filename.
+    expect((editorDialog(shadow)!.querySelector("input") as HTMLInputElement).value).toBe("");
+
+    typeName(shadow, "Today");
+    await flush(shadow.host);
+    // The destination is shown as the name is typed.
+    expect(shadow.textContent).toContain("Saved to Journal/Today.md");
+
+    click(saveButton(shadow));
+    await flush(shadow.host);
+
+    expect(calls.find((call) => call.service === "write_file")?.data.path).toBe(
+      "Journal/Today.md",
+    );
+  });
+
+  it("asks for a name before saving", async () => {
+    const { shadow, calls } = await mount({ files: { "": [] } });
+
+    click(
+      Array.from(shadow.querySelectorAll("ha-button")).find((button) =>
+        button.textContent?.includes("New file"),
+      ),
+    );
+    await flush(shadow.host);
+
+    typeContent(shadow, "no name given");
+    await flush(shadow.host);
+    click(saveButton(shadow));
+    await flush(shadow.host);
+
+    expect(shadow.textContent).toContain("Give the file a name");
+    expect(calls.some((call) => call.service === "write_file")).toBe(false);
+  });
+});
+
+describe("the markdown toolbar", () => {
+  async function openEditor(setup: Setup) {
+    const mounted = await mount(setup);
+    click(rows(mounted.shadow)[0].querySelector(".row-text"));
+    await flush(mounted.shadow.host);
+    return mounted;
+  }
+
+  function toolbarButton(shadow: ShadowRoot, label: string): Element | undefined {
+    // The formatting buttons carry a title; Preview/Write are labelled by text.
+    return Array.from(
+      editorDialog(shadow)!.querySelectorAll(".markdown-bar button"),
+    ).find(
+      (button) =>
+        button.getAttribute("title") === label ||
+        button.textContent?.trim() === label,
+    );
+  }
+
+  it("wraps the selection in bold markers", async () => {
+    const { shadow } = await openEditor({
+      files: { "": [entry("a.md", "a.md")] },
+      contents: { "a.md": "hello world" },
+    });
+
+    const area = editorTextarea(shadow);
+    area.setSelectionRange(0, 5);
+    click(toolbarButton(shadow, "Bold"));
+    await flush(shadow.host);
+
+    expect(editorTextarea(shadow).value).toBe("**hello** world");
+  });
+
+  it("turns the selected lines into a list", async () => {
+    const { shadow } = await openEditor({
+      files: { "": [entry("a.md", "a.md")] },
+      contents: { "a.md": "milk\nbread" },
+    });
+
+    const area = editorTextarea(shadow);
+    area.setSelectionRange(0, "milk\nbread".length);
+    click(toolbarButton(shadow, "Bullet list"));
+    await flush(shadow.host);
+
+    expect(editorTextarea(shadow).value).toBe("- milk\n- bread");
+  });
+
+  it("toggles the preview without losing the text", async () => {
+    const { shadow } = await openEditor({
+      files: { "": [entry("a.md", "a.md")] },
+      contents: { "a.md": "# Heading" },
+    });
+
+    click(toolbarButton(shadow, "Preview"));
+    await flush(shadow.host);
+
+    expect(editorDialog(shadow)!.querySelector("ha-markdown")).toBeTruthy();
+    expect(editorDialog(shadow)!.querySelector("textarea")).toBeNull();
+
+    click(toolbarButton(shadow, "Write"));
+    await flush(shadow.host);
+    expect(editorTextarea(shadow).value).toBe("# Heading");
   });
 });
 
@@ -283,9 +503,20 @@ describe("permissions drive what the panel offers", () => {
     const { shadow } = await mount({
       permissions: { allow_delete: false },
       files: { "": [entry("a.md", "a.md")] },
+      contents: { "a.md": "hi" },
     });
 
-    expect(rows(shadow)[0].querySelector('ha-button[title="Delete"]')).toBeNull();
+    // Not in the row menu...
+    expect(menuItems(shadow)[0]?.label).not.toBe("Delete");
+    expect(menuAction(shadow, "Delete")).toBeUndefined();
+
+    // ...and not in the editor either.
+    click(rows(shadow)[0].querySelector(".row-text"));
+    await flush(shadow.host);
+    const secondary = Array.from(
+      editorDialog(shadow)!.querySelectorAll('ha-button[slot="secondaryAction"]'),
+    ).map((button) => button.textContent?.trim());
+    expect(secondary).not.toContain("Delete");
   });
 
   it("explains itself when listing is off", async () => {

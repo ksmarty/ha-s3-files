@@ -1,11 +1,14 @@
+import { mdiDelete, mdiPencil } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
-import { property, state } from "lit/decorators.js";
+import { property, query, state } from "lit/decorators.js";
 
 import { deleteFile, getInfo, listFiles, readFile, writeFile } from "./api";
 import {
+  applyMarkdown,
   breadcrumbs,
   describeEntry,
   displayName,
+  ensureExtension,
   iconFor,
   isTextFile,
   joinPath,
@@ -24,6 +27,11 @@ import type { HomeAssistant, S3Entry, S3Info } from "./types";
  * What the panel offers follows the permission switches: with writing off there
  * is no New or Save, with deleting off there is no delete. The integration
  * refuses those calls anyway, so the UI only reflects a decision already made.
+ *
+ * The editor is deliberately built from native input and textarea elements
+ * rather than a form schema: this project has already been bitten by Home
+ * Assistant form controls that changed shape or silently rendered nothing, and
+ * a native field cannot do either.
  */
 export class S3FilesPanel extends LitElement {
   @property({ attribute: false }) hass!: HomeAssistant;
@@ -49,13 +57,19 @@ export class S3FilesPanel extends LitElement {
 
   @state() private _editorIsNew = false;
 
-  @state() private _editorData: Record<string, unknown> = {};
+  @state() private _editorName = "";
+
+  @state() private _editorContent = "";
+
+  @state() private _editorPreview = false;
 
   @state() private _editorError = "";
 
   @state() private _saving = false;
 
   @state() private _deleteTarget: S3Entry | null = null;
+
+  @query("textarea.markdown") private _contentArea?: HTMLTextAreaElement;
 
   static styles = css`
     :host {
@@ -177,15 +191,88 @@ export class S3FilesPanel extends LitElement {
     .error {
       color: var(--error-color, #db4437);
     }
-    .filename {
+
+    /* -- editor ---------------------------------------------------------- */
+    .editor {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: min(680px, 85vw);
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .field label {
       font-size: 13px;
       color: var(--secondary-text-color);
-      padding-top: 4px;
+    }
+    .field input,
+    .editor textarea {
+      font: inherit;
+      color: var(--primary-text-color);
+      background: var(--card-background-color);
+      border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.25));
+      border-radius: 8px;
+      padding: 8px 10px;
+      box-sizing: border-box;
+      width: 100%;
+    }
+    .field input:focus,
+    .editor textarea:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+    .editor textarea {
+      min-height: 45vh;
+      resize: vertical;
+      font-family: var(--code-font-family, ui-monospace, monospace);
+      line-height: 1.5;
+      tab-size: 2;
+    }
+    .where {
+      font-size: 13px;
+      color: var(--secondary-text-color);
+    }
+    .markdown-bar {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-wrap: wrap;
+    }
+    .markdown-bar button {
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: var(--primary-text-color);
+      cursor: pointer;
+      font: inherit;
+      min-width: 32px;
+      padding: 4px 8px;
+    }
+    .markdown-bar button:hover {
+      background: var(--secondary-background-color);
+    }
+    .markdown-bar button[data-active="true"] {
+      background: var(--secondary-background-color);
+      border-color: var(--divider-color, rgba(0, 0, 0, 0.2));
+    }
+    .markdown-bar .spacer {
+      flex: 1;
+    }
+    .preview {
+      min-height: 45vh;
+      border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.25));
+      border-radius: 8px;
+      padding: 8px 12px;
+      overflow: auto;
+      background: var(--card-background-color);
     }
     .hint {
       font-size: 13px;
       color: var(--secondary-text-color);
-      padding-top: 8px;
+      padding-top: 4px;
     }
     @media (max-width: 600px) {
       :host {
@@ -196,6 +283,9 @@ export class S3FilesPanel extends LitElement {
       }
       .new-label {
         display: none;
+      }
+      .editor {
+        min-width: auto;
       }
     }
   `;
@@ -276,7 +366,9 @@ export class S3FilesPanel extends LitElement {
     this._editorOpen = true;
     this._editorIsNew = false;
     this._editorError = "";
-    this._editorData = { path: entry.path, content: "" };
+    this._editorPreview = false;
+    this._editorName = entry.path;
+    this._editorContent = "";
 
     if (!isTextFile(entry.path)) {
       this._editorError =
@@ -285,8 +377,7 @@ export class S3FilesPanel extends LitElement {
     }
 
     try {
-      const content = await readFile(this.hass, entry.path);
-      this._editorData = { path: entry.path, content };
+      this._editorContent = await readFile(this.hass, entry.path);
     } catch (err) {
       this._editorError = message(err);
     }
@@ -296,24 +387,32 @@ export class S3FilesPanel extends LitElement {
     this._editorOpen = true;
     this._editorIsNew = true;
     this._editorError = "";
-    this._editorData = { path: joinPath(this._path, ""), content: "" };
+    this._editorPreview = false;
+    // The name only: where it lands is shown separately, so the folder cannot
+    // be duplicated into the filename or dropped by mistake.
+    this._editorName = "";
+    this._editorContent = "";
+  }
+
+  /** The path this file will be saved to. */
+  private get _targetPath(): string {
+    if (!this._editorIsNew) return this._editorName;
+    return joinPath(this._path, ensureExtension(this._editorName));
   }
 
   private async _save(): Promise<void> {
-    const path = String(this._editorData.path ?? "").trim();
-    const content = String(this._editorData.content ?? "");
-
-    if (!path) {
+    if (this._editorIsNew && !this._editorName.trim()) {
       this._editorError = "Give the file a name.";
       return;
     }
 
+    const path = this._targetPath;
     this._saving = true;
     this._editorError = "";
     try {
       // Replacing is the point of editing, so overwrite is on; the unique
       // naming used by "take a note" deliberately does not apply here.
-      const result = await writeFile(this.hass, path, content, true);
+      const result = await writeFile(this.hass, path, this._editorContent, true);
       this._editorOpen = false;
       await this._load(parentPath(result.path));
     } catch (err) {
@@ -335,27 +434,41 @@ export class S3FilesPanel extends LitElement {
     }
   }
 
-  private _editorSchema() {
-    const fields: Record<string, unknown>[] = [];
-    if (this._editorIsNew) {
-      fields.push({
-        name: "path",
-        required: true,
-        selector: { text: {} },
-      });
-    }
-    fields.push({
-      name: "content",
-      selector: { text: { multiline: true } },
-    });
-    return fields;
+  private async _applyFormat(action: string): Promise<void> {
+    const area = this._contentArea;
+    if (!area) return;
+
+    const result = applyMarkdown(
+      action,
+      this._editorContent,
+      area.selectionStart,
+      area.selectionEnd,
+    );
+    this._editorContent = result.text;
+    await this.updateComplete;
+
+    area.focus();
+    area.setSelectionRange(result.selectionStart, result.selectionEnd);
   }
 
-  private _editorLabels() {
-    return {
-      path: "File name",
-      content: "Contents",
-    } as Record<string, string>;
+  private _rowMenuItems(entry: S3Entry) {
+    const items: Record<string, unknown>[] = [];
+    if (this._permissions.allow_read) {
+      items.push({
+        label: "Open",
+        path: mdiPencil,
+        action: () => void this._openExisting(entry),
+      });
+    }
+    if (this._permissions.allow_delete && !entry.is_folder) {
+      items.push({
+        label: "Delete",
+        path: mdiDelete,
+        action: () => (this._deleteTarget = entry),
+        warning: true,
+      });
+    }
+    return items;
   }
 
   protected render() {
@@ -448,6 +561,7 @@ export class S3FilesPanel extends LitElement {
   private _renderRow(entry: S3Entry) {
     const clickable = entry.is_folder || this._permissions.allow_read;
     const meta = this._showDetails ? describeEntry(entry, true) : "";
+    const menu = this._rowMenuItems(entry);
     return html`
       <div class="row" data-clickable=${clickable}>
         <ha-icon
@@ -458,54 +572,123 @@ export class S3FilesPanel extends LitElement {
           <div class="row-title">${displayName(entry, this._showDetails)}</div>
           ${meta ? html`<div class="row-meta">${meta}</div>` : nothing}
         </div>
-        ${!entry.is_folder && this._permissions.allow_delete
-          ? html`<ha-button
-              title="Delete"
-              @click=${() => (this._deleteTarget = entry)}
-            >
-              <ha-icon icon="mdi:delete-outline"></ha-icon>
-            </ha-button>`
+        ${menu.length
+          ? html`<ha-icon-overflow-menu
+              .narrow=${true}
+              .items=${menu}
+            ></ha-icon-overflow-menu>`
           : nothing}
       </div>
     `;
   }
 
+  private _editorHeading(): string {
+    if (this._editorIsNew) return "New file";
+    if (!this._permissions.allow_read) return "File";
+    return "Edit file";
+  }
+
+  private _renderMarkdownBar() {
+    const button = (label: string, action: string, title: string) =>
+      html`<button title=${title} @click=${() => void this._applyFormat(action)}>
+        ${label}
+      </button>`;
+
+    return html`
+      <div class="markdown-bar">
+        ${button("B", "bold", "Bold")} ${button("I", "italic", "Italic")}
+        ${button("##", "heading", "Heading")}
+        ${button("•", "bullet", "Bullet list")}
+        ${button("❝", "quote", "Quote")} ${button("</>", "code", "Code")}
+        ${button("Link", "link", "Link")}
+        <span class="spacer"></span>
+        <button
+          data-active=${this._editorPreview}
+          @click=${() => (this._editorPreview = !this._editorPreview)}
+        >
+          ${this._editorPreview ? "Write" : "Preview"}
+        </button>
+      </div>
+    `;
+  }
+
   private _renderEditor() {
+    const canWrite = this._permissions.allow_write;
     return html`
       <ha-dialog
         .open=${this._editorOpen}
-        .heading=${this._editorIsNew ? "New file" : "Edit file"}
+        .heading=${this._editorHeading()}
         @closed=${() => (this._editorOpen = false)}
       >
-        ${this._editorIsNew
-          ? html`<div class="filename">
-              Saved in ${this._info?.scope ? this._info.scope : "the bucket root"}
-            </div>`
-          : html`<div class="filename">${this._editorData.path}</div>`}
-        <ha-form
-          .hass=${this.hass}
-          .data=${this._editorData}
-          .schema=${this._editorSchema()}
-          .computeLabel=${(schema: { name: string }) =>
-            this._editorLabels()[schema.name] ?? schema.name}
-          @value-changed=${(ev: CustomEvent) => {
-            this._editorData = ev.detail.value;
-          }}
-        ></ha-form>
-        ${this._editorError
-          ? html`<div class="error">${this._editorError}</div>`
-          : nothing}
-        ${this._permissions.allow_write
-          ? nothing
-          : html`<div class="hint">
-              Writing is switched off for this integration, so this file cannot
-              be saved from here.
-            </div>`}
+        <div class="editor">
+          ${this._editorIsNew
+            ? html`<div class="field">
+                <label for="s3-files-name">File name</label>
+                <input
+                  id="s3-files-name"
+                  type="text"
+                  .value=${this._editorName}
+                  placeholder="My note"
+                  ?disabled=${!canWrite}
+                  @input=${(ev: Event) => {
+                    this._editorName = (ev.target as HTMLInputElement).value;
+                  }}
+                  @keydown=${(ev: KeyboardEvent) => {
+                    if (ev.key === "Enter") {
+                      ev.preventDefault();
+                      this._contentArea?.focus();
+                    }
+                  }}
+                />
+                <div class="where">Saved to ${this._targetPath || "…"}</div>
+              </div>`
+            : html`<div class="field">
+                <label>File</label>
+                <div class="where">${this._editorName}</div>
+              </div>`}
+          ${canWrite ? this._renderMarkdownBar() : nothing}
+          ${this._editorPreview
+            ? html`<div class="preview">
+                <ha-markdown .content=${this._editorContent}></ha-markdown>
+              </div>`
+            : html`<textarea
+                class="markdown"
+                .value=${this._editorContent}
+                placeholder="Write your note…"
+                ?disabled=${!canWrite}
+                @input=${(ev: Event) => {
+                  this._editorContent = (ev.target as HTMLTextAreaElement).value;
+                }}
+              ></textarea>`}
+          ${this._editorError
+            ? html`<div class="error">${this._editorError}</div>`
+            : nothing}
+          ${canWrite
+            ? nothing
+            : html`<div class="hint">
+                Writing is switched off for this integration, so this file cannot
+                be saved from here.
+              </div>`}
+        </div>
+
         <ha-dialog-footer slot="footer">
+          ${this._permissions.allow_delete && !this._editorIsNew
+            ? html`<ha-button
+                slot="secondaryAction"
+                @click=${() => {
+                  const target = this._entries.find(
+                    (item) => item.path === this._editorName,
+                  );
+                  if (target) this._deleteTarget = target;
+                }}
+              >
+                Delete
+              </ha-button>`
+            : nothing}
           <ha-button slot="secondaryAction" @click=${() => (this._editorOpen = false)}>
-            ${this._permissions.allow_write ? "Cancel" : "Close"}
+            ${canWrite ? "Cancel" : "Close"}
           </ha-button>
-          ${this._permissions.allow_write
+          ${canWrite
             ? html`<ha-button
                 slot="primaryAction"
                 .disabled=${this._saving}

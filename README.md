@@ -189,7 +189,20 @@ would refuse:
 | Create and overwrite | No New file button, and the editor becomes read only |
 | Delete files | No delete button on any row |
 
-Deleting always asks first, and says that an S3 delete cannot be undone.
+Deleting always asks first, and says that an S3 delete cannot be undone. It is
+available from the **⋮** menu on each row and from the editor, whenever the
+delete permission is switched on.
+
+### Writing a note
+
+The editor is built for markdown: a formatting bar for **bold**, *italic*,
+headings, bullet lists, quotes, code and links — each one acts on the text you
+have selected — plus a **Preview** toggle that renders the note as you write it.
+
+A new file gets a `.md` extension if you do not type one, so `Shopping list`
+becomes `Shopping list.md`. The file name field is empty rather than pre-filled
+with the folder you are in: where the file will be saved is shown underneath,
+so the folder is never lost or doubled up.
 
 There is one display setting, **Show extensions, sizes and dates**, on by
 default. Turn it off for a plain list of names: the extension is dropped from

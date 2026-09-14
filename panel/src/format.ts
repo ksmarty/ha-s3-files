@@ -177,6 +177,98 @@ export function describeEntry(entry: S3Entry, showDetails = true): string {
   return parts.join(" · ");
 }
 
+/**
+ * Ensure a name a user typed ends up with a usable extension.
+ *
+ * A note written in the panel is markdown, so a bare name becomes
+ * "note.md" rather than a file with no type that every other tool has to
+ * guess at. A name that already carries an extension is left alone.
+ */
+export function ensureExtension(name: string, extension = "md"): string {
+  const trimmed = (name ?? "").trim().replace(/\.+$/, "");
+  if (!trimmed) return "";
+  if (/\.[A-Za-z0-9]+$/.test(trimmed)) return trimmed;
+  return `${trimmed}.${extension}`;
+}
+
+export interface MarkdownEdit {
+  text: string;
+  selectionStart: number;
+  selectionEnd: number;
+}
+
+const WRAPPERS: Record<string, [string, string]> = {
+  bold: ["**", "**"],
+  italic: ["_", "_"],
+  code: ["`", "`"],
+};
+
+const PREFIXES: Record<string, string> = {
+  heading: "## ",
+  bullet: "- ",
+  quote: "> ",
+};
+
+/**
+ * Apply a markdown formatting action to a selection.
+ *
+ * Pure so it can be tested without a textarea: the editor only has to hand
+ * over the text and the selection, then put the caret back where this says.
+ */
+export function applyMarkdown(
+  action: string,
+  text: string,
+  start: number,
+  end: number,
+): MarkdownEdit {
+  const safeStart = Math.max(0, Math.min(start, text.length));
+  const safeEnd = Math.max(safeStart, Math.min(end, text.length));
+  const before = text.slice(0, safeStart);
+  const selected = text.slice(safeStart, safeEnd);
+  const after = text.slice(safeEnd);
+
+  if (action === "link") {
+    const label = selected || "text";
+    const inserted = `[${label}](url)`;
+    // Select the placeholder url, so it can be typed straight over.
+    return {
+      text: before + inserted + after,
+      selectionStart: safeStart + inserted.length - 4,
+      selectionEnd: safeStart + inserted.length - 1,
+    };
+  }
+
+  if (action in WRAPPERS) {
+    const [open, close] = WRAPPERS[action];
+    const inserted = `${open}${selected}${close}`;
+    return {
+      text: before + inserted + after,
+      selectionStart: safeStart + open.length,
+      selectionEnd: safeStart + open.length + selected.length,
+    };
+  }
+
+  if (action in PREFIXES) {
+    const prefix = PREFIXES[action];
+    // Every line the selection touches, so a list can be made in one go.
+    const blockStart = before.lastIndexOf("\n") + 1;
+    const block = text.slice(blockStart, safeEnd);
+    const updated = block
+      .split("\n")
+      .map((line) =>
+        line.startsWith(prefix) ? line.slice(prefix.length) : `${prefix}${line}`,
+      )
+      .join("\n");
+    return {
+      text: text.slice(0, blockStart) + updated + after,
+      selectionStart: blockStart,
+      selectionEnd: blockStart + updated.length,
+    };
+  }
+
+  return { text, selectionStart: safeStart, selectionEnd: safeEnd };
+}
+
 /** Sort folders first, then by name. */
 export function sortEntries(entries: S3Entry[]): S3Entry[] {
   return [...entries].sort((a, b) => {

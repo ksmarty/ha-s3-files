@@ -1,0 +1,12 @@
+{
+  "domain": "s3_files",
+  "name": "S3 Files",
+  "codeowners": ["@ksmarty"],
+  "config_flow": true,
+  "documentation": "https://github.com/ksmarty/ha-s3-files",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/ksmarty/ha-s3-files/issues",
+  "requirements": ["boto3==1.43.93"],
+  "version": "0.1.0"
+}

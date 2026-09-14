@@ -1,0 +1,95 @@
+# S3 Files — Assist sentence templates (English)
+#
+# HACS cannot install custom_sentences for you. Either run:
+#
+#   scripts/install_custom_sentences.sh
+#
+# ...or call the s3_files.install_sentences action, which copies this file to
+# config/custom_sentences/en/s3_files.yaml and reloads the conversation agent.
+#
+# Sentences only reach the intents whose permission is switched on; if an
+# action is disabled the matching sentence simply does not resolve.
+#
+# Spoken file paths are awkward at the best of times. These templates cover
+# the ones that work well out loud — dictating a note, listing, reading,
+# deleting, moving. Everything else is better done through an LLM, which calls
+# the same intents as tools.
+
+language: en
+
+lists:
+  note:
+    wildcard: true
+  name:
+    wildcard: true
+  path:
+    wildcard: true
+  content:
+    wildcard: true
+  source:
+    wildcard: true
+  destination:
+    wildcard: true
+
+intents:
+  S3CreateNote:
+    # The "called <name>" forms must be tried before the bare wildcard ones:
+    # "take a note[ that] {note}" would otherwise swallow the whole phrase
+    # ("take a note called shopping that buy milk") as the note text.
+    data:
+      - sentences:
+          - "take a note called {name}[ that] {note}"
+          - "make a note called {name}[ that] {note}"
+      - sentences:
+          - "take a note[ that] {note}"
+          - "make a note[ that] {note}"
+          - "save a note[ that] {note}"
+          - "note[ down] that {note}"
+          - "note down {note}"
+          - "remember that {note}"
+
+  S3ListFiles:
+    data:
+      - sentences:
+          - "list my files"
+          - "list the files"
+          - "what files do I have"
+      - sentences:
+          - "list my files in {path}"
+          - "list the files in {path}"
+          - "list files in {path}"
+          - "what files are in {path}"
+
+  S3ReadFile:
+    data:
+      - sentences:
+          - "read the file {path}"
+          - "read file {path}"
+          - "what is in the file {path}"
+
+  S3WriteFile:
+    data:
+      - sentences:
+          - "write {content} to {path}"
+          - "add {content} to the file {path}"
+
+  S3MoveFile:
+    data:
+      - sentences:
+          - "move the file {source} to {destination}"
+          - "move {source} to {destination}"
+          - "rename {source} to {destination}"
+
+  S3CreateFolder:
+    data:
+      - sentences:
+          - "create a folder called {path}"
+          - "create a folder {path}"
+          - "make a folder called {path}"
+
+  S3DeleteFile:
+    data:
+      - sentences:
+          - "delete the file {path}"
+          - "delete file {path}"
+          - "remove the file {path}"

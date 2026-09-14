@@ -1,0 +1,137 @@
+# Service UI descriptions for S3 Files.
+#
+# These selector definitions drive the UI form in Developer Tools → Actions
+# (and the automation "Perform action" editor). The voluptuous schemas in
+# services.py still validate each call, and tests/test_services_yaml.py keeps
+# the two in step.
+#
+# A service is only registered when its permission is switched on, so a
+# disabled action does not appear here at all.
+
+list_files:
+  name: List files
+  description: List the files and folders under a path in the bucket.
+  fields:
+    path:
+      example: notes
+      selector:
+        text: {}
+    recursive:
+      default: false
+      selector:
+        boolean: {}
+    max_results:
+      example: 100
+      selector:
+        number:
+          min: 1
+          max: 1000
+          mode: box
+
+read_file:
+  name: Read file
+  description: Read a file's contents.
+  fields:
+    path:
+      required: true
+      example: notes/ideas.md
+      selector:
+        text: {}
+    encoding:
+      default: text
+      selector:
+        select:
+          options:
+            - label: Text (UTF-8)
+              value: text
+            - label: Base64 (for binary files)
+              value: base64
+    max_bytes:
+      example: 262144
+      selector:
+        number:
+          min: 1
+          max: 10485760
+          mode: box
+
+write_file:
+  name: Write file
+  description: Create or replace a file with the given contents.
+  fields:
+    path:
+      required: true
+      example: notes/ideas.md
+      selector:
+        text: {}
+    content:
+      required: true
+      example: Buy milk
+      selector:
+        text:
+          multiline: true
+    encoding:
+      default: text
+      selector:
+        select:
+          options:
+            - label: Text (UTF-8)
+              value: text
+            - label: Base64 (for binary files)
+              value: base64
+    content_type:
+      example: text/markdown
+      selector:
+        text: {}
+    overwrite:
+      default: true
+      selector:
+        boolean: {}
+
+delete_file:
+  name: Delete file
+  description: Delete a file. This cannot be undone.
+  fields:
+    path:
+      required: true
+      example: notes/ideas.md
+      selector:
+        text: {}
+
+move_file:
+  name: Move file
+  description: Move or rename a file. The original is deleted after the copy succeeds.
+  fields:
+    source:
+      required: true
+      example: notes/ideas.md
+      selector:
+        text: {}
+    destination:
+      required: true
+      example: archive/ideas-2026.md
+      selector:
+        text: {}
+    overwrite:
+      default: false
+      selector:
+        boolean: {}
+
+create_folder:
+  name: Create folder
+  description: Create a folder marker so an empty folder shows up in listings.
+  fields:
+    path:
+      required: true
+      example: archive
+      selector:
+        text: {}
+
+install_sentences:
+  name: Install voice sentences
+  description: Copy the packaged Assist sentence templates into your Home Assistant config directory and reload the conversation agent. Custom sentences cannot be installed by HACS, so this is a one-time setup step.
+  fields:
+    language:
+      default: en
+      example: en
+      selector:
+        text: {}

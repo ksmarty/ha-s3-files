@@ -1,0 +1,73 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # pip resolves a different Home Assistant per Python version, and the
+        # difference matters here: 3.12 tops out at HA 2025.1, which has no LLM
+        # tool helpers, so tests/test_llm_tools.py skips. 3.13 gets a current
+        # Home Assistant where the LLM path is exercised for real. Both must be
+        # green — the older run is what catches accidental use of a newer API.
+        python-version: ["3.12", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install test dependencies
+        # moto intercepts botocore, so the S3 layer is exercised for real
+        # without a bucket. hassil is not a hard dependency of every Home
+        # Assistant release but the sentence tests need it.
+        run: pip install pytest homeassistant boto3 moto hassil pyflakes
+
+      - name: Compile integration
+        run: python -m compileall -q custom_components/s3_files
+
+      - name: Lint for unused imports and undefined names
+        run: python -m pyflakes custom_components/s3_files tests
+
+      - name: Assert the LLM tool tests will really run
+        # On 3.13 the tool helpers must exist, otherwise tests/test_llm_tools.py
+        # skips and the headline feature would ship untested. Fail loudly if the
+        # environment drifts.
+        if: matrix.python-version == '3.13'
+        run: |
+          python -c "
+          from homeassistant.helpers import llm
+          assert hasattr(llm, 'NamespacedTool') and hasattr(llm, 'IntentTool'), (
+              'no LLM tool helpers in this Home Assistant: tests/test_llm_tools.py '
+              'would skip, leaving the LLM path untested'
+          )
+          print('LLM tool helpers present')
+          "
+
+      - name: Run unit tests
+        run: python -m pytest
+
+  hacs:
+    # The HACS workflow boots a Home Assistant container to validate the
+    # repository; only run it on main to keep CI fast.
+    if: github.ref == 'refs/heads/main'
+    name: HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: HACS action
+        uses: hacs/action@main
+        with:
+          category: integration
+          github_token: ${{ secrets.GITHUB_TOKEN }}

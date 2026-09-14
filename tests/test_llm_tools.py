@@ -308,7 +308,9 @@ def test_the_note_tool_creates_a_note_without_a_filename(tmp_path, stub_llm):
         )["Contents"]
     ]
     assert len(keys) == 1
-    assert keys[0].startswith("notes/")
+    # No notes folder is configured here, so the note sits directly in the
+    # scoped folder, which is the bucket root.
+    assert "/" not in keys[0], keys[0]
     assert keys[0].endswith("-the-wifi-password-is-hunter2.md")
 
 

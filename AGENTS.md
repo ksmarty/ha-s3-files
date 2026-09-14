@@ -164,6 +164,14 @@ Release steps (after approval):
 - **A trailing slash on the scope root** must not change the answer:
   `paths._scope` normalises it, or `is_within("notes/a", "notes/")` returns
   False and a valid key looks like an escape.
+- **The options flow factory must be a plain callback.** Home Assistant calls
+  `async_get_options_flow(config_entry)` and uses whatever it returns directly
+  as the flow object, without awaiting it. An `async def` factory returns a
+  coroutine, so the next attribute access on it fails and the settings cog
+  answers with a 500 — which is exactly what shipped in 0.1.0.
+  `tests/test_config_flow.py` pins the contract, and
+  `tests/test_config_flow.py::test_the_options_flow_can_build_its_form` drives
+  the step for real.
 - **`IntentHandleError` bubbles out** of `intent.async_handle` as an
   `IntentError`; it is not converted into a response. That is the intended
   mechanism — the conversation agent speaks it and an LLM agent relays the

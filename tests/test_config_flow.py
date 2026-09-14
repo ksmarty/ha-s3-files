@@ -210,3 +210,84 @@ def test_the_config_flow_aborts_when_already_configured():
         config_flow.S3FilesConfigFlow.async_step_user
     )
     assert "already_configured" in source
+
+
+def test_the_options_flow_factory_is_synchronous():
+    """Home Assistant calls this without awaiting it.
+
+    It uses whatever the factory returns directly as the flow object and
+    immediately reads `flow.init_step`. An `async def` factory returns a
+    coroutine, so that read raises AttributeError and the settings button
+    answers with a 500 — which is exactly what happened in the field.
+    """
+    import inspect
+
+    from homeassistant import config_entries
+
+    assert not inspect.iscoroutinefunction(
+        config_flow.S3FilesConfigFlow.async_get_options_flow
+    ), "an async factory returns a coroutine, not a flow"
+
+    entry = type("Entry", (), {"options": {CONF_BUCKET: "b"}, "entry_id": "e"})()
+    flow = config_flow.S3FilesConfigFlow.async_get_options_flow(entry)
+
+    assert isinstance(flow, config_entries.OptionsFlow)
+    # The attribute Home Assistant touches straight away.
+    assert flow.init_step
+
+
+def test_the_options_flow_can_build_its_form():
+    """The full path the settings button takes, short of the HTTP layer."""
+    import asyncio
+
+    from homeassistant import config_entries
+
+    entry = type(
+        "Entry",
+        (),
+        {
+            "options": {
+                CONF_BUCKET: "mini-notes-bucket",
+                CONF_ROOT_PREFIX: "Mini Notes",
+            },
+            "entry_id": "e",
+        },
+    )()
+    flow = config_flow.S3FilesConfigFlow.async_get_options_flow(entry)
+    assert isinstance(flow, config_entries.OptionsFlow)
+
+    result = asyncio.run(flow.async_step_init(None))
+
+    assert result["type"] == "form"
+    # ...and the form it built must be renderable.
+    fields = _serialize(result["data_schema"])
+    assert {field["name"] for field in fields} >= set(PERMISSIONS)
+
+
+# ---------------------------------------------------------------------------
+# Notes placement.
+# ---------------------------------------------------------------------------
+
+
+def test_notes_default_to_the_scoped_folder_itself():
+    """Scoping to a folder should put notes in that folder, not a subfolder."""
+    assert config_flow._defaults()[CONF_NOTES_FOLDER] == ""
+    assert config_flow._clean({}, {})[CONF_NOTES_FOLDER] == ""
+
+
+def test_an_empty_notes_folder_is_not_replaced_by_a_default():
+    """Empty is a real choice, not an untouched field."""
+    assert config_flow._clean({CONF_NOTES_FOLDER: ""}, {})[CONF_NOTES_FOLDER] == ""
+
+
+def test_a_named_notes_folder_is_kept_and_trimmed():
+    assert (
+        config_flow._clean({CONF_NOTES_FOLDER: "  journal "}, {})[CONF_NOTES_FOLDER]
+        == "journal"
+    )
+
+
+def test_a_missing_notes_folder_falls_back_to_the_default():
+    """An entry saved before the field existed still gets a sane value."""
+    cleaned = config_flow._clean({}, {CONF_BUCKET: "b"})
+    assert cleaned[CONF_NOTES_FOLDER] == config_flow.DEFAULT_NOTES_FOLDER

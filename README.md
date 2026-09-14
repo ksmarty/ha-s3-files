@@ -57,7 +57,7 @@ diagnostics — it is never written to the log.
 | Field | Notes |
 | --- | --- |
 | **Folder this integration is limited to** | The only folder it can reach, e.g. `homeassistant/notes`. Leave empty to allow the whole bucket. |
-| **Notes folder** | Where "take a note" saves, relative to the folder above. Defaults to `notes`. |
+| **Notes subfolder** | Where "take a note" saves, relative to the folder above. Leave it empty (the default) to save notes directly in that folder. |
 
 ### Permissions
 
@@ -116,7 +116,7 @@ immediately — no sentence templates, no extra setup.
 Ask things like:
 
 - *"Take a note that the boiler service is booked for Tuesday."*
-- *"List my files in notes."*
+- *"List my files."*
 - *"Read notes/shopping.md."*
 - *"Move notes/draft.md to archive/draft.md."*
 - *"Delete notes/old.md."*
@@ -124,6 +124,14 @@ Ask things like:
 Only the tools your permissions allow are offered to the model — and the prompt
 it receives names the folder it is confined to and lists what it is not allowed
 to do, so it will not promise you something the integration will refuse.
+
+### Where notes go
+
+"Take a note" writes a timestamped markdown file, so you never have to invent a
+filename. By default it lands **directly in the folder you scoped the
+integration to** — scope it to `Mini Notes` and your notes appear in
+`Mini Notes/`. Set a **Notes subfolder** if you would rather keep them in a
+subfolder of it (for example `Journal`, giving `Mini Notes/Journal/`).
 
 ### By voice (optional)
 

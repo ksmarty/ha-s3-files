@@ -18,6 +18,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.selector import (
     BooleanSelector,
@@ -178,9 +179,12 @@ def _clean(user_input: dict[str, Any], previous: dict[str, Any]) -> dict[str, An
     options[CONF_ENDPOINT_URL] = str(options.get(CONF_ENDPOINT_URL) or "").strip()
     options[CONF_REGION] = str(options.get(CONF_REGION) or DEFAULT_REGION).strip()
     options[CONF_ACCESS_KEY_ID] = str(options.get(CONF_ACCESS_KEY_ID) or "").strip()
-    options[CONF_NOTES_FOLDER] = str(
-        options.get(CONF_NOTES_FOLDER) or DEFAULT_NOTES_FOLDER
-    ).strip()
+    notes_folder = options.get(CONF_NOTES_FOLDER)
+    if notes_folder is None:
+        notes_folder = DEFAULT_NOTES_FOLDER
+    # An empty notes folder is meaningful: save notes directly in the scoped
+    # folder. Only a missing value falls back to the default.
+    options[CONF_NOTES_FOLDER] = str(notes_folder).strip()
     return options
 
 
@@ -300,9 +304,18 @@ class S3FilesConfigFlow(config_entries.ConfigFlow, _SettingsForm, domain=DOMAIN)
         return self._show("user", errors)
 
     @staticmethod
-    async def async_get_options_flow(
+    @callback
+    def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
+        """Return the options flow for this entry.
+
+        This has to be a plain synchronous callback. Home Assistant calls it
+        directly and uses whatever it returns as the flow object, without
+        awaiting it, so an `async def` here hands back a coroutine — and the
+        next attribute access on it fails with a 500 the moment the user opens
+        the settings.
+        """
         return S3FilesOptionsFlow(config_entry)
 
 

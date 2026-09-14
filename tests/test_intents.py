@@ -208,7 +208,8 @@ def test_taking_a_note_creates_a_markdown_file(tmp_path):
 
     assert "Noted as" in speech
     path = extra["path"]
-    assert path.startswith("notes/")
+    # No notes folder is configured, so the note goes directly in the scope.
+    assert "/" not in path, path
     assert path.endswith("-buy-milk-and-bread.md")
 
     import boto3
@@ -216,7 +217,7 @@ def test_taking_a_note_creates_a_markdown_file(tmp_path):
     stored = boto3.client("s3", region_name="us-east-1").get_object(
         Bucket=BUCKET, Key=path
     )["Body"].read()
-    assert stored.startswith(b"# Buy milk and bread".replace(b" ", b" ")[:2])
+    assert stored.startswith(b"# Buy milk and bread")
 
 
 @mock_aws
@@ -374,3 +375,53 @@ def test_every_intent_declares_a_description_and_a_permission():
         assert cls.description, cls.__name__
         assert len(cls.description) > 40, cls.__name__
         assert cls.permission in PERMISSIONS, cls.__name__
+
+
+@mock_aws
+def test_notes_land_directly_in_the_scoped_folder_when_no_subfolder_is_set(tmp_path):
+    """Scoping to a folder should put notes in that folder, not one below it.
+
+    This is the reported case: the integration is scoped to "Mini Notes" and
+    the notes belong directly in it. The scope contains a space, which must
+    survive path handling like any other character.
+    """
+    _make_bucket()
+
+    async def body(hass, hub, registered, intent_helper):
+        response = await _handle(hass, INTENT_CREATE_NOTE, {"note": "buy milk"})
+        return _extra(response)["path"]
+
+    path = _run(
+        tmp_path,
+        {CONF_ALLOW_WRITE: True, "root_prefix": "Mini Notes", "notes_folder": ""},
+        body,
+    )
+
+    assert "/" not in path, f"the note was nested instead of placed directly: {path}"
+    assert path.endswith("-buy-milk.md")
+
+    import boto3
+
+    keys = [
+        item["Key"]
+        for item in boto3.client("s3", region_name="us-east-1").list_objects_v2(
+            Bucket=BUCKET
+        )["Contents"]
+    ]
+    assert keys == [f"Mini Notes/{path}"]
+
+
+@mock_aws
+def test_a_named_notes_subfolder_still_nests(tmp_path):
+    _make_bucket()
+
+    async def body(hass, hub, registered, intent_helper):
+        response = await _handle(hass, INTENT_CREATE_NOTE, {"note": "buy milk"})
+        return _extra(response)["path"]
+
+    path = _run(
+        tmp_path,
+        {CONF_ALLOW_WRITE: True, "root_prefix": "Mini Notes", "notes_folder": "Journal"},
+        body,
+    )
+    assert path.startswith("Journal/")

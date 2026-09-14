@@ -45,10 +45,15 @@ def _build_prompt(hub: Any) -> str:
     ]
 
     if permissions.enabled("allow_write"):
+        where = (
+            f"inside '{hub.notes_folder}/'"
+            if hub.notes_folder
+            else "at the top level of the folder you are scoped to"
+        )
         parts.append(
-            f"Use s3_files__S3CreateNote when the user dictates a note — it "
-            f"writes a timestamped markdown file under "
-            f"'{hub.notes_folder}/' without needing a filename."
+            "Use s3_files__S3CreateNote when the user dictates a note — it "
+            f"writes a timestamped markdown file {where} without needing a "
+            "filename."
         )
         if permissions.enabled("allow_read"):
             parts.append(

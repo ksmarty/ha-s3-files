@@ -26,7 +26,9 @@ DEFAULT_REGION = "us-east-1"
 DEFAULT_PATH_STYLE = True
 DEFAULT_VERIFY_SSL = True
 DEFAULT_ROOT_PREFIX = ""
-DEFAULT_NOTES_FOLDER = "notes"
+# Empty by default: notes land directly in the folder the integration is
+# scoped to. Set a name to keep them in a subfolder of it instead.
+DEFAULT_NOTES_FOLDER = ""
 
 # ---------------------------------------------------------------------------
 # Permissions

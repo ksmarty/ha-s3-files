@@ -24,6 +24,8 @@ _LOGGER = logging.getLogger(__name__)
 _CONNECT_TIMEOUT = 10
 _READ_TIMEOUT = 30
 _MAX_ATTEMPTS = 3
+# How many " (2)", " (3)", ... variants to try before giving up on a name.
+MAX_UNIQUE_ATTEMPTS = 50
 
 # ClientError codes that mean "the server rejected our credentials" rather
 # than "the object is missing" or "you may not do that".
@@ -342,13 +344,23 @@ class S3FilesClient:
         *,
         content_type: str | None,
         overwrite: bool,
+        unique: bool = False,
     ) -> dict[str, Any]:
-        """Upload a file, optionally refusing to replace an existing one."""
+        """Upload a file.
+
+        `overwrite=False` refuses to replace an existing object. `unique=True`
+        instead settles on a free name by adding " (2)", " (3)", ... — which is
+        what a dictated note wants, since nobody should lose a note because
+        they said the same thing twice.
+        """
         key = self._key(path)
         bucket = self._config.bucket
 
         def _write(client: Any) -> dict[str, Any]:
-            if not overwrite:
+            final_key = key
+            if unique:
+                final_key = self._free_key(client, key)
+            elif not overwrite:
                 try:
                     client.head_object(Bucket=bucket, Key=key)
                 except Exception as err:  # noqa: BLE001
@@ -359,13 +371,40 @@ class S3FilesClient:
                         f"{path} already exists. Pass overwrite to replace it."
                     )
 
-            kwargs: dict[str, Any] = {"Bucket": bucket, "Key": key, "Body": data}
+            kwargs: dict[str, Any] = {"Bucket": bucket, "Key": final_key, "Body": data}
             if content_type:
                 kwargs["ContentType"] = content_type
             client.put_object(**kwargs)
-            return {"path": path, "size": len(data), "created": True}
+            return {
+                "path": self._relative(final_key),
+                "size": len(data),
+                "created": True,
+            }
 
         return await self._run("write the file", _write)
+
+    def _free_key(self, client: Any, key: str) -> str:
+        """Return `key`, or the first sibling name that is still free."""
+        bucket = self._config.bucket
+        folder, _, name = key.rpartition("/")
+        prefix = f"{folder}/" if folder else ""
+        stem, dot, extension = name.rpartition(".")
+        suffix = f".{extension}" if dot and extension else ""
+        stem = stem if dot and extension else name
+
+        for index in range(1, MAX_UNIQUE_ATTEMPTS + 1):
+            candidate = key if index == 1 else f"{prefix}{stem} ({index}){suffix}"
+            try:
+                client.head_object(Bucket=bucket, Key=candidate)
+            except Exception as err:  # noqa: BLE001
+                if _is_missing(err):
+                    return candidate
+                raise
+
+        raise S3FilesError(
+            f"There are already {MAX_UNIQUE_ATTEMPTS} files called {stem}. "
+            "Give this one a different name."
+        )
 
     async def async_delete(self, path: str) -> dict[str, Any]:
         """Delete a file."""

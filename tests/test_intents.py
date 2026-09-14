@@ -210,14 +210,18 @@ def test_taking_a_note_creates_a_markdown_file(tmp_path):
     path = extra["path"]
     # No notes folder is configured, so the note goes directly in the scope.
     assert "/" not in path, path
-    assert path.endswith("-buy-milk-and-bread.md")
+    # A readable name taken from the note: the words the user said, no dashes
+    # and no timestamp.
+    assert path == "Buy milk and bread.md"
 
     import boto3
 
     stored = boto3.client("s3", region_name="us-east-1").get_object(
         Bucket=BUCKET, Key=path
     )["Body"].read()
-    assert stored.startswith(b"# Buy milk and bread")
+    # No explicit name was given, so the file is just the note text — the
+    # filename already carries the title.
+    assert stored == b"Buy milk and bread\n"
 
 
 @mock_aws
@@ -233,7 +237,73 @@ def test_a_named_note_uses_the_name(tmp_path):
         return _extra(response)["path"]
 
     path = _run(tmp_path, {CONF_ALLOW_WRITE: True}, body)
-    assert path.endswith("-front-door.md")
+    assert path == "Front door.md"
+
+
+@mock_aws
+def test_a_named_note_gets_a_heading(tmp_path):
+    """With a name, the heading is that name so the note reads properly."""
+    _make_bucket()
+
+    async def body(hass, hub, registered, intent_helper):
+        response = await _handle(
+            hass,
+            INTENT_CREATE_NOTE,
+            {"note": "the door code is 1234", "name": "Front door"},
+        )
+        return _extra(response)["path"]
+
+    path = _run(tmp_path, {CONF_ALLOW_WRITE: True}, body)
+
+    import boto3
+
+    stored = boto3.client("s3", region_name="us-east-1").get_object(
+        Bucket=BUCKET, Key=path
+    )["Body"].read()
+    assert stored == b"# Front door\n\nthe door code is 1234\n"
+
+
+@mock_aws
+def test_the_same_note_twice_does_not_overwrite_the_first(tmp_path):
+    """Losing a note because you dictated the same words is not acceptable."""
+    _make_bucket()
+
+    async def body(hass, hub, registered, intent_helper):
+        first = await _handle(hass, INTENT_CREATE_NOTE, {"note": "buy milk"})
+        second = await _handle(hass, INTENT_CREATE_NOTE, {"note": "buy milk"})
+        third = await _handle(hass, INTENT_CREATE_NOTE, {"note": "buy milk"})
+        return [
+            _extra(first)["path"],
+            _extra(second)["path"],
+            _extra(third)["path"],
+        ]
+
+    paths = _run(tmp_path, {CONF_ALLOW_WRITE: True}, body)
+    assert paths == ["Buy milk.md", "Buy milk (2).md", "Buy milk (3).md"]
+
+    import boto3
+
+    keys = sorted(
+        item["Key"]
+        for item in boto3.client("s3", region_name="us-east-1").list_objects_v2(
+            Bucket=BUCKET
+        )["Contents"]
+    )
+    assert keys == ["Buy milk (2).md", "Buy milk (3).md", "Buy milk.md"]
+
+
+@mock_aws
+def test_a_second_note_keeps_the_extension_when_renamed(tmp_path):
+    _make_bucket()
+
+    async def body(hass, hub, registered, intent_helper):
+        await _handle(hass, INTENT_CREATE_NOTE, {"note": "buy milk"})
+        second = await _handle(hass, INTENT_CREATE_NOTE, {"note": "buy milk"})
+        return _extra(second)["path"]
+
+    path = _run(tmp_path, {CONF_ALLOW_WRITE: True}, body)
+    assert path == "Buy milk (2).md"
+    assert not path.endswith(".md.md")
 
 
 @mock_aws
@@ -398,7 +468,7 @@ def test_notes_land_directly_in_the_scoped_folder_when_no_subfolder_is_set(tmp_p
     )
 
     assert "/" not in path, f"the note was nested instead of placed directly: {path}"
-    assert path.endswith("-buy-milk.md")
+    assert path == "Buy milk.md"
 
     import boto3
 

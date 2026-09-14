@@ -311,7 +311,8 @@ def test_the_note_tool_creates_a_note_without_a_filename(tmp_path, stub_llm):
     # No notes folder is configured here, so the note sits directly in the
     # scoped folder, which is the bucket root.
     assert "/" not in keys[0], keys[0]
-    assert keys[0].endswith("-the-wifi-password-is-hunter2.md")
+    # The model does not have to invent a filename: it comes from the note.
+    assert keys[0] == "The wifi password is hunter2.md"
 
 
 @mock_aws

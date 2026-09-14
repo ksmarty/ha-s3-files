@@ -172,6 +172,12 @@ Release steps (after approval):
   `tests/test_config_flow.py` pins the contract, and
   `tests/test_config_flow.py::test_the_options_flow_can_build_its_form` drives
   the step for real.
+- **Note filenames come from the note itself.** `paths.note_filename` keeps the
+  words the user said (no dashes, no timestamp), cuts a long note to its first
+  sentence and truncates on a word boundary. Because the timestamp is gone,
+  uniqueness is handled at write time: `async_write(..., unique=True)` settles
+  on " (2)", " (3)", ... so two identical notes never overwrite each other.
+  Never solve a collision by putting a date back in the name.
 - **`IntentHandleError` bubbles out** of `intent.async_handle` as an
   `IntentError`; it is not converted into a response. That is the intended
   mechanism — the conversation agent speaks it and an LLM agent relays the

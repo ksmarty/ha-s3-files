@@ -125,13 +125,24 @@ Only the tools your permissions allow are offered to the model — and the promp
 it receives names the folder it is confined to and lists what it is not allowed
 to do, so it will not promise you something the integration will refuse.
 
-### Where notes go
+### Where notes go, and what they are called
 
-"Take a note" writes a timestamped markdown file, so you never have to invent a
-filename. By default it lands **directly in the folder you scoped the
-integration to** — scope it to `Mini Notes` and your notes appear in
-`Mini Notes/`. Set a **Notes subfolder** if you would rather keep them in a
-subfolder of it (for example `Journal`, giving `Mini Notes/Journal/`).
+"Take a note" names the file from what you actually said, so you never have to
+invent a filename — *"take a note buy milk and bread"* becomes
+`Buy milk and bread.md`. The words are kept as spoken, because that is what
+makes a note findable months later; there are no dashes joining them together
+and no timestamp in front. A long note is named after its first sentence.
+
+By default a note lands **directly in the folder you scoped the integration
+to** — scope it to `Mini Notes` and your notes appear in `Mini Notes/`. Set a
+**Notes subfolder** if you would rather keep them nested (for example
+`Journal`, giving `Mini Notes/Journal/`).
+
+If that name is already taken the new note gets ` (2)`, ` (3)` and so on, so
+dictating the same thing twice never destroys the first note.
+
+Your assistant can also supply a name of its own when the dictated words would
+make a poor filename.
 
 ### By voice (optional)
 

@@ -21,8 +21,32 @@ from datetime import datetime
 
 # S3 keys are limited to 1024 bytes of UTF-8.
 MAX_KEY_BYTES = 1024
-# Guard against absurd folder names from a model.
-MAX_SLUG_LENGTH = 60
+# Long enough to stay descriptive, short enough to read in a file listing.
+MAX_FILENAME_LENGTH = 60
+
+# Characters that cannot appear in a generated filename. The separators would
+# silently turn one name into a folder path; the rest are awkward or outright
+# invalid for common clients and sync tools.
+_UNSAFE_FILENAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_WHITESPACE = re.compile(r"\s+")
+# A sentence end, but only when it really ends one: the terminator must be
+# followed by a capital or the end of the line, so "e.g. the manual" is not
+# cut in half.
+_SENTENCE_END = re.compile(r"[.!?](?=\s+[A-Z]|\s*$)")
+
+# An assistant sometimes passes the whole utterance as the note text, which
+# would put "take a note that" into the filename. Strip the trigger phrase when
+# it is genuinely at the start — these words are not content.
+_LEADING_COMMAND = re.compile(
+    r"^\s*(?:please\s+)?"
+    r"(?:(?:take|make|save|write)\s+(?:a|the)\s+note(?:\s+that|\s+saying)?"
+    # "note that" / "note down", but not a bare "Note ..." — that is more
+    # likely to be the note itself.
+    r"|note(?:\s+down|\s+that)"
+    r"|remember\s+that)"
+    r"\s*",
+    re.IGNORECASE,
+)
 
 
 class PathError(ValueError):
@@ -201,26 +225,60 @@ def split_parent(path: str) -> tuple[str, str]:
     return parent, name
 
 
-def slugify(text: str, *, fallback: str = "note") -> str:
-    """Turn arbitrary text into a safe, readable filename component."""
-    ascii_text = (
-        unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-    )
-    slug = _SLUG_STRIP.sub("-", ascii_text.lower()).strip("-")
-    slug = slug[:MAX_SLUG_LENGTH].strip("-")
-    return slug or fallback
+def note_filename(
+    text: str | None,
+    *,
+    fallback: str = "Note",
+    max_length: int = MAX_FILENAME_LENGTH,
+) -> str:
+    """Build a readable filename from dictated text or a spoken name.
+
+    The words the user actually said are kept — no dashes joining them up and
+    no timestamp in front — because that is what makes a note findable months
+    later. Only what would break the name is removed.
+
+    A long note is cut to its first sentence, so "I parked in bay 12 and the
+    ticket is in the glovebox" becomes "I parked in bay 12" rather than a
+    truncated run-on.
+    """
+    if not text or not str(text).strip():
+        return fallback
+
+    line = str(text).strip().split("\n", 1)[0]
+    # Drop "take a note that" / "remember that" if the caller passed the whole
+    # utterance rather than just the note.
+    line = _LEADING_COMMAND.sub("", line, count=1).strip()
+
+    sentence_end = _SENTENCE_END.search(line)
+    if sentence_end and 0 < sentence_end.start() <= max_length:
+        line = line[: sentence_end.start()]
+
+    clean = _WHITESPACE.sub(" ", _UNSAFE_FILENAME.sub(" ", line)).strip(" .")
+    if not clean or not any(char.isalnum() for char in clean):
+        # Punctuation alone is not a filename.
+        return fallback
+
+    if len(clean) > max_length:
+        cut = clean[:max_length]
+        # Prefer a word boundary, so the name never ends mid-word.
+        if " " in cut:
+            cut = cut[: cut.rfind(" ")]
+        clean = cut.strip(" .")
+    if not clean:
+        return fallback
+
+    return clean[0].upper() + clean[1:]
 
 
-def note_key(notes_folder: str, title: str, when: datetime) -> str:
+def note_key(notes_folder: str, title: str | None, when: datetime | None = None) -> str:
     """Build the scope relative path for a new note.
 
-    Timestamped so two notes taken in the same minute cannot collide, and
-    sortable in a plain ``list_files``.
+    `when` is accepted for backward compatibility with callers that used to
+    stamp the timestamp into the name; it is no longer used. Uniqueness is
+    handled when the object is written, not by the filename.
     """
     folder = normalize_prefix(notes_folder)
-    slug = slugify(title)
-    stamp = when.strftime("%Y-%m-%d-%H%M%S")
-    name = f"{stamp}-{slug}.md"
+    name = f"{note_filename(title)}.md"
     return f"{folder}/{name}" if folder else name
 
 

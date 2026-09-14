@@ -15,14 +15,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
-from datetime import datetime
 from typing import Any
 
 import voluptuous as vol
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import intent
-from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_ALLOW_DELETE,
@@ -129,15 +127,17 @@ class _S3Intent(intent.IntentHandler):
 
 
 class S3CreateNoteIntent(_S3Intent):
-    """Write a note into the notes folder."""
+    """Write a note into the notes area."""
 
     intent_type = INTENT_CREATE_NOTE
     permission = CONF_ALLOW_WRITE
     description = (
-        "Save a short note the user dictated as a new markdown file in their "
-        "S3 notes folder. Use this for 'take a note ...', 'make a note that "
-        "...' and 'note that ...'. Do not use it to overwrite an existing "
-        "file; use S3WriteFile for that."
+        "Save a short note the user dictated as a new markdown file. Use this "
+        "for 'take a note ...', 'make a note that ...' and 'note that ...'. "
+        "Set 'name' to a short filename in the user's own words when the note "
+        "would make a poor filename by itself (for example 'Boiler service'); "
+        "if you leave it out, the name is taken from the note. Never replace "
+        "an existing note — use S3WriteFile if the user asks for that."
     )
 
     @property
@@ -156,17 +156,20 @@ class S3CreateNoteIntent(_S3Intent):
         if not note:
             raise intent.IntentHandleError("I did not catch what the note should say.")
 
-        title = _slot_text(slots, "name") or note
-        when: datetime = dt_util.now()
-        path = note_key(hub.notes_folder, title, when)
-        body = f"# {title.strip()}\n\n{note}\n"
+        name = _slot_text(slots, "name")
+        # With an explicit name the note gets a heading; without one the note
+        # stands alone and the filename carries the title, so the text is not
+        # repeated back at the top of the file.
+        body = f"# {name}\n\n{note}\n" if name else f"{note}\n"
 
         result = await self._guard(
             hub.client.async_write(
-                path,
+                note_key(hub.notes_folder, name or note),
                 body.encode("utf-8"),
                 content_type=DEFAULT_CONTENT_TYPE,
                 overwrite=False,
+                # Two notes that read the same must not overwrite each other.
+                unique=True,
             )
         )
         return self._response(

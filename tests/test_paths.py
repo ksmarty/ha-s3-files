@@ -5,7 +5,7 @@ Pure stdlib, so it runs without a Home Assistant runtime.
 
 from __future__ import annotations
 
-from datetime import datetime
+import re
 
 import pytest
 
@@ -17,9 +17,9 @@ from custom_components.s3_files.paths import (
     normalize_folder,
     normalize_path,
     normalize_prefix,
+    note_filename,
     note_key,
     resolve_key,
-    slugify,
     split_parent,
     to_relative,
 )
@@ -150,38 +150,114 @@ def test_split_parent():
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        ("Take out the trash!", "take-out-the-trash"),
-        ("  spaced  out  ", "spaced-out"),
-        ("Ünïcödé", "unicode"),
-        ("!!!", "note"),
-        ("", "note"),
+        # The words the user said, kept readable: no dashes, no timestamp.
+        ("buy milk and bread", "Buy milk and bread"),
+        ("Call the plumber", "Call the plumber"),
+        ("  spaced   out  ", "Spaced out"),
+        ("Take out the trash!", "Take out the trash"),
+        ("Ünïcödé note", "Ünïcödé note"),
+        # Nothing usable left -> a sane fallback rather than a blank name.
+        ("", "Note"),
+        ("   ", "Note"),
+        ("!!!", "Note"),
+        ("///", "Note"),
+        ("..", "Note"),
     ],
 )
-def test_slugify(text, expected):
-    assert slugify(text) == expected
+def test_note_filename(text, expected):
+    assert note_filename(text) == expected
 
 
-def test_slugify_truncates_long_titles():
-    assert len(slugify("word " * 100)) <= 60
+def test_note_filename_has_no_dashes_joining_the_words():
+    name = note_filename("take out the trash")
+    assert name == "Take out the trash"
+    assert "-" not in name
 
 
-def test_note_key_is_timestamped_and_readable():
-    when = datetime(2026, 9, 14, 14, 30, 5)
-    assert note_key("notes", "Take out the trash", when) == (
-        "notes/2026-09-14-143005-take-out-the-trash.md"
+def test_note_filename_carries_no_date():
+    """The timestamp used to prefix every note; it made names unreadable."""
+    name = note_filename("buy milk")
+    assert name == "Buy milk"
+    assert not re.search(r"\d{4}[-_]\d{2}[-_]\d{2}", name)
+
+
+def test_note_filename_cuts_to_the_first_sentence():
+    assert (
+        note_filename("I parked in bay 12. The ticket is in the glovebox.")
+        == "I parked in bay 12"
     )
 
 
+def test_note_filename_does_not_split_an_abbreviation():
+    """A dot inside a word is not the end of a sentence."""
+    assert note_filename("See e.g. the manual") == "See e.g. the manual"
+
+
+def test_note_filename_truncates_long_notes_on_a_word_boundary():
+    text = (
+        "Remember to buy milk and bread and eggs and cheese and butter and jam "
+        "and tea and coffee and rice"
+    )
+    name = note_filename(text)
+
+    assert len(name) <= 60
+    assert len(name) < len(text), "a long note should have been shortened"
+    # A whole prefix, so the name never ends mid-word.
+    assert text.startswith(name)
+    assert not name.endswith(" ")
+
+
+def test_note_filename_removes_path_separators():
+    """A separator in a name would silently become a folder."""
+    name = note_filename("holiday/plans 2026")
+    assert "/" not in name
+    assert name == "Holiday plans 2026"
+
+
+def test_note_filename_strips_characters_that_break_clients():
+    name = note_filename('report: "final" <v2>?')
+    for bad in '<>:"/\\|?*':
+        assert bad not in name
+
+
+def test_note_key_uses_the_filename():
+    assert note_key("notes", "buy milk") == "notes/Buy milk.md"
+    assert note_key("", "Ideas") == "Ideas.md"
+
+
 def test_note_key_without_a_notes_folder():
-    when = datetime(2026, 9, 14, 14, 30, 5)
-    assert note_key("", "Ideas", when) == "2026-09-14-143005-ideas.md"
+    assert note_key("", "Ideas") == "Ideas.md"
 
 
 def test_note_key_ends_up_inside_the_scope():
     """The generated path must survive the same resolution as user input."""
-    when = datetime(2026, 9, 14, 14, 30, 5)
-    key = resolve_key("homeassistant", note_key("notes", "x", when))
-    assert key.startswith("homeassistant/notes/")
+    key = resolve_key("homeassistant", note_key("notes", "buy milk"))
+    assert key == "homeassistant/notes/Buy milk.md"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # An assistant may pass the whole utterance as the note text; the
+        # command words are not part of the note.
+        ("take a note that the boiler is booked", "The boiler is booked"),
+        ("Take a note buy milk", "Buy milk"),
+        ("make a note that call mum", "Call mum"),
+        ("save a note the door code is 1234", "The door code is 1234"),
+        ("note down pick up the parcel", "Pick up the parcel"),
+        ("note that the bins go out tonight", "The bins go out tonight"),
+        ("remember that I parked in bay 12", "I parked in bay 12"),
+        ("please take a note that the tap drips", "The tap drips"),
+    ],
+)
+def test_note_filename_drops_a_leading_command(text, expected):
+    assert note_filename(text) == expected
+
+
+def test_note_filename_keeps_a_command_phrase_that_is_the_content():
+    """Only a leading trigger is removed; the words are otherwise kept."""
+    assert note_filename("Take the bins out") == "Take the bins out"
+    assert note_filename("Note the door code") == "Note the door code"
 
 
 def test_describe_scope():

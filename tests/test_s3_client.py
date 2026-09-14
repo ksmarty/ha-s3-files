@@ -276,3 +276,86 @@ def test_check_reports_a_missing_bucket():
 def test_check_passes_for_an_existing_bucket():
     _make_bucket()
     assert run(_client(FakeHass()).async_check()) == {"bucket": BUCKET}
+
+
+@mock_aws
+def test_unique_writes_settle_on_a_free_name():
+    """A dictated note must never overwrite the previous one."""
+    _make_bucket()
+    client = _client(FakeHass())
+
+    first = run(
+        client.async_write(
+            "Buy milk.md", b"one", content_type=None, overwrite=False, unique=True
+        )
+    )
+    second = run(
+        client.async_write(
+            "Buy milk.md", b"two", content_type=None, overwrite=False, unique=True
+        )
+    )
+    third = run(
+        client.async_write(
+            "Buy milk.md", b"three", content_type=None, overwrite=False, unique=True
+        )
+    )
+
+    assert first["path"] == "Buy milk.md"
+    assert second["path"] == "Buy milk (2).md"
+    assert third["path"] == "Buy milk (3).md"
+
+    # Every note is still there, unmodified.
+    assert run(client.async_read("Buy milk.md", max_bytes=32))["data"] == b"one"
+    assert run(client.async_read("Buy milk (2).md", max_bytes=32))["data"] == b"two"
+    assert run(client.async_read("Buy milk (3).md", max_bytes=32))["data"] == b"three"
+
+
+@mock_aws
+def test_unique_writes_keep_the_folder_and_the_extension():
+    _make_bucket()
+    client = _client(FakeHass(), root_prefix="Mini Notes")
+
+    run(
+        client.async_write(
+            "Journal/Note.md", b"one", content_type=None, overwrite=False, unique=True
+        )
+    )
+    second = run(
+        client.async_write(
+            "Journal/Note.md", b"two", content_type=None, overwrite=False, unique=True
+        )
+    )
+
+    assert second["path"] == "Journal/Note (2).md"
+
+
+@mock_aws
+def test_unique_writes_handle_a_name_with_several_dots():
+    _make_bucket()
+    client = _client(FakeHass())
+
+    run(
+        client.async_write(
+            "notes.2026.md", b"one", content_type=None, overwrite=False, unique=True
+        )
+    )
+    second = run(
+        client.async_write(
+            "notes.2026.md", b"two", content_type=None, overwrite=False, unique=True
+        )
+    )
+
+    assert second["path"] == "notes.2026 (2).md"
+
+
+@mock_aws
+def test_unique_writes_handle_a_name_with_no_extension():
+    _make_bucket()
+    client = _client(FakeHass())
+
+    run(client.async_write("README", b"one", content_type=None, overwrite=False, unique=True))
+    second = run(
+        client.async_write("README", b"two", content_type=None, overwrite=False, unique=True)
+    )
+
+    assert second["path"] == "README (2)"

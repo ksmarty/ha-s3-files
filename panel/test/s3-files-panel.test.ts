@@ -62,15 +62,27 @@ function makeHass(setup: Setup) {
 
       switch (service) {
         case "get_info":
-          return info;
+          return { context: { id: "test" }, response: info };
         case "list_files":
-          return { files: setup.files?.[String(data.path ?? "")] ?? [] };
+          return {
+            context: { id: "test" },
+            response: { files: setup.files?.[String(data.path ?? "")] ?? [] },
+          };
         case "read_file":
-          return { content: setup.contents?.[String(data.path)] ?? "" };
+          return {
+            context: { id: "test" },
+            response: { content: setup.contents?.[String(data.path)] ?? "" },
+          };
         case "write_file":
-          return { path: data.path, size: String(data.content ?? "").length };
+          return {
+            context: { id: "test" },
+            response: {
+              path: data.path,
+              size: String(data.content ?? "").length,
+            },
+          };
         default:
-          return {};
+          return { context: { id: "test" }, response: {} };
       }
     },
   } as unknown as HomeAssistant;
@@ -278,6 +290,19 @@ describe("permissions drive what the panel offers", () => {
 
     expect(shadow.textContent).toContain("Listing is switched off");
     expect(calls.some((call) => call.service === "list_files")).toBe(false);
+  });
+
+  it("does not blame the settings when listing is actually on", async () => {
+    // The reported bug: the panel read the service call's envelope instead of
+    // the payload, so every permission looked off and it told the user listing
+    // was switched off when they had switched it on.
+    const { shadow, calls } = await mount({
+      files: { "": [entry("Buy milk.md", "Buy milk.md")] },
+    });
+
+    expect(shadow.textContent).not.toContain("Listing is switched off");
+    expect(rows(shadow)).toHaveLength(1);
+    expect(calls.some((call) => call.service === "list_files")).toBe(true);
   });
 
   it("does not make files clickable when reading is off", async () => {

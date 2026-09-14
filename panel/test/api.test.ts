@@ -39,7 +39,9 @@ function fakeHass(
       returnResponse?: boolean,
     ) => {
       calls.push({ domain, service, data, returnResponse });
-      return respond(service, data) as Record<string, unknown>;
+      // Home Assistant resolves a service call to this envelope, with the
+      // integration's value under `response`.
+      return { context: { id: "test" }, response: respond(service, data) };
     },
   } as unknown as HomeAssistant;
   return { hass, calls };
@@ -53,9 +55,33 @@ describe("service calls", () => {
     expect(calls[0].returnResponse).toBe(true);
   });
 
+  it("unwraps the envelope Home Assistant returns", async () => {
+    // A service call resolves to {context, response}, with the integration's
+    // value under `response`. Reading the payload off the envelope itself
+    // yields undefined — which is how the panel came to report that listing
+    // was switched off when it was on.
+    const { hass } = fakeHass(() => ({
+      permissions: { allow_list: true },
+    }));
+
+    const info = await getInfo(hass);
+
+    expect(info.permissions.allow_list).toBe(true);
+  });
+
   it("explains itself when no response comes back", async () => {
     const { hass } = fakeHass(() => undefined);
     await expect(listFiles(hass, "")).rejects.toThrow(/did not return a response/);
+  });
+
+  it("explains itself when the call itself fails", async () => {
+    const hass = {
+      callService: async () => {
+        throw new Error("Service s3_files.get_info not found.");
+      },
+    } as unknown as HomeAssistant;
+
+    await expect(getInfo(hass)).rejects.toThrow(/not found/);
   });
 });
 

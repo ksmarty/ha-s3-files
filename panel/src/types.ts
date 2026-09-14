@@ -22,22 +22,31 @@ export interface S3Info {
   permissions: S3Permissions;
 }
 
-export interface HassServiceResponse {
-  [key: string]: unknown;
+export interface WriteResult {
+  path: string;
+  size: number;
+}
+
+/**
+ * What a service call resolves to.
+ *
+ * This is the envelope, not the service's own return value: Home Assistant
+ * wraps the answer as `{context, response}` and puts the payload under
+ * `response`. Reading `.permissions` off the envelope yields undefined, which
+ * is why the panel once reported that listing was switched off when it was on.
+ */
+export interface ServiceCallResponse<T = unknown> {
+  context?: { id?: string };
+  response?: T;
 }
 
 export interface HomeAssistant {
-  callService(
+  callService<T = unknown>(
     domain: string,
     service: string,
     serviceData?: Record<string, unknown>,
     target?: unknown,
     notifyOnError?: boolean,
     returnResponse?: boolean,
-  ): Promise<HassServiceResponse>;
-}
-
-export interface WriteResult {
-  path: string;
-  size: number;
+  ): Promise<ServiceCallResponse<T>>;
 }

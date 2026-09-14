@@ -562,22 +562,24 @@ function $(s) {
 }
 const jt = "s3_files";
 async function R(s, t, e = {}) {
-  const i = await s.callService(
+  const r = (await s.callService(
     jt,
     t,
     e,
     void 0,
+    // Let the caller deal with failures: the panel shows them in place, which
+    // is where the user is looking, rather than as a toast.
     !1,
     !0
-  );
-  if (!i)
+  ))?.response;
+  if (r == null)
     throw new Error(
       `s3_files.${t} did not return a response. If this integration was just updated, reload the page.`
     );
-  return i;
+  return r;
 }
 async function It(s) {
-  return await R(s, "get_info");
+  return R(s, "get_info");
 }
 async function Lt(s, t) {
   return (await R(s, "list_files", { path: t })).files ?? [];
@@ -587,11 +589,11 @@ async function Bt(s, t) {
   return String(e.content ?? "");
 }
 async function Ft(s, t, e, i = !0) {
-  const r = await R(s, "write_file", {
-    path: t,
-    content: e,
-    overwrite: i
-  });
+  const r = await R(
+    s,
+    "write_file",
+    { path: t, content: e, overwrite: i }
+  );
   return {
     path: String(r.path ?? t),
     size: Number(r.size ?? 0)

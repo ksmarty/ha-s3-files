@@ -201,10 +201,13 @@ Release steps (after approval):
 - **A disabled permission raises `S3PermissionError` in services** but
   `IntentHandleError` in intents, because one is read by a log and the other
   spoken out loud.
-- **Ask for the service response.** `hass.callService(domain, service, data,
-  undefined, false, true)` — the last argument is what makes Home Assistant
-  return the response. Without it every call in `panel/src/api.ts` comes back
-  empty, and the panel silently shows nothing.
+- **Ask for the service response — and unwrap it.** `hass.callService(domain,
+  service, data, undefined, false, true)`; the last argument is what makes Home
+  Assistant return anything. What comes back is an **envelope**,
+  `{context, response}`, with the service's return value under `response` — not
+  the value itself. Reading fields off the envelope yields undefined, which
+  made every permission look switched off and the panel blame the user's
+  settings. `panel/src/api.ts` unwraps in one place; keep it that way.
 - **Bind properties, not attributes, on HA elements.** `.heading=${...}` works;
   `heading="..."` is only an attribute and the element will not read it as a
   property — a dialog then renders with no heading, and a test looking for it by

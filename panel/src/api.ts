@@ -1,36 +1,34 @@
 /**
  * Typed wrappers around the integration's services.
  *
- * Every call asks for the service response explicitly (the last argument).
- * Home Assistant does not return one otherwise, and these services are useful
- * precisely because they report back what happened — the path a note actually
- * got, whether a file was truncated, and so on.
+ * Every call asks for the service response explicitly — without that last
+ * argument Home Assistant returns nothing at all — and then unwraps it. The
+ * frontend resolves a service call to `{context, response}`, with the
+ * integration's return value under `response`; it is not the value itself.
  */
 
-import type {
-  HassServiceResponse,
-  HomeAssistant,
-  S3Entry,
-  S3Info,
-  WriteResult,
-} from "./types";
+import type { HomeAssistant, S3Entry, S3Info, WriteResult } from "./types";
 
 const DOMAIN = "s3_files";
 
-async function call(
+async function call<T>(
   hass: HomeAssistant,
   service: string,
   data: Record<string, unknown> = {},
-): Promise<HassServiceResponse> {
-  const response = await hass.callService(
+): Promise<T> {
+  const result = await hass.callService<T>(
     DOMAIN,
     service,
     data,
     undefined,
+    // Let the caller deal with failures: the panel shows them in place, which
+    // is where the user is looking, rather than as a toast.
     false,
     true,
   );
-  if (!response) {
+
+  const response = result?.response;
+  if (response === undefined || response === null) {
     throw new Error(
       `s3_files.${service} did not return a response. If this integration was ` +
         "just updated, reload the page.",
@@ -40,23 +38,22 @@ async function call(
 }
 
 export async function getInfo(hass: HomeAssistant): Promise<S3Info> {
-  const response = await call(hass, "get_info");
-  return response as unknown as S3Info;
+  return call<S3Info>(hass, "get_info");
 }
 
 export async function listFiles(
   hass: HomeAssistant,
   path: string,
 ): Promise<S3Entry[]> {
-  const response = await call(hass, "list_files", { path });
-  return (response.files as S3Entry[]) ?? [];
+  const response = await call<{ files?: S3Entry[] }>(hass, "list_files", { path });
+  return response.files ?? [];
 }
 
 export async function readFile(
   hass: HomeAssistant,
   path: string,
 ): Promise<string> {
-  const response = await call(hass, "read_file", { path });
+  const response = await call<{ content?: string }>(hass, "read_file", { path });
   return String(response.content ?? "");
 }
 
@@ -66,11 +63,11 @@ export async function writeFile(
   content: string,
   overwrite = true,
 ): Promise<WriteResult> {
-  const response = await call(hass, "write_file", {
-    path,
-    content,
-    overwrite,
-  });
+  const response = await call<{ path?: string; size?: number }>(
+    hass,
+    "write_file",
+    { path, content, overwrite },
+  );
   return {
     path: String(response.path ?? path),
     size: Number(response.size ?? 0),

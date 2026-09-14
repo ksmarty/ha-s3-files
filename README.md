@@ -191,7 +191,8 @@ would refuse:
 
 Deleting always asks first, and says that an S3 delete cannot be undone. It is
 available from the **⋮** menu on each row and from the editor, whenever the
-delete permission is switched on.
+delete permission is switched on. Every delete button is styled as a
+destructive action, so it does not look like the ordinary button beside it.
 
 ### Renaming a file
 
@@ -206,9 +207,9 @@ refused rather than replacing it.
 
 ### Writing a note
 
-The editor is built for markdown: a formatting bar for **bold**, *italic*,
-headings, bullet lists, quotes, code and links — each one acts on the text you
-have selected — plus a **Preview** toggle that renders the note as you write it.
+The editor is built for markdown. Above the text there is one control: a
+**Preview** toggle that renders the note as you write it, and switches back to
+the plain text without losing anything.
 
 A new file gets a `.md` extension if you do not type one, so `Shopping list`
 becomes `Shopping list.md`. The file name field is empty rather than pre-filled

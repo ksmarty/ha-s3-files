@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  applyMarkdown,
   baseName,
   breadcrumbs,
   describeEntry,
@@ -280,57 +279,3 @@ describe("renamePath", () => {
   });
 });
 
-describe("applyMarkdown", () => {
-  it("wraps the selection and keeps it selected", () => {
-    const result = applyMarkdown("bold", "hello world", 0, 5);
-    expect(result.text).toBe("**hello** world");
-    expect(result.text.slice(result.selectionStart, result.selectionEnd)).toBe("hello");
-  });
-
-  it("wraps italics and code the same way", () => {
-    expect(applyMarkdown("italic", "hi", 0, 2).text).toBe("_hi_");
-    expect(applyMarkdown("code", "x = 1", 0, 5).text).toBe("`x = 1`");
-  });
-
-  it("inserts markers and puts the caret between them when nothing is selected", () => {
-    const result = applyMarkdown("bold", "", 0, 0);
-    expect(result.text).toBe("****");
-    expect(result.selectionStart).toBe(2);
-    expect(result.selectionEnd).toBe(2);
-  });
-
-  it("turns the selection into a link and selects the placeholder url", () => {
-    const result = applyMarkdown("link", "docs", 0, 4);
-    expect(result.text).toBe("[docs](url)");
-    expect(result.text.slice(result.selectionStart, result.selectionEnd)).toBe("url");
-  });
-
-  it("prefixes the lines a selection touches", () => {
-    const text = "milk\nbread";
-    const result = applyMarkdown("bullet", text, 0, text.length);
-    expect(result.text).toBe("- milk\n- bread");
-  });
-
-  it("prefixes the whole line even when the selection is partial", () => {
-    const text = "milk\nbread";
-    const result = applyMarkdown("heading", text, 1, 2);
-    expect(result.text).toBe("## milk\nbread");
-  });
-
-  it("removes a prefix that is already there", () => {
-    const text = "- milk\n- bread";
-    const result = applyMarkdown("bullet", text, 0, text.length);
-    expect(result.text).toBe("milk\nbread");
-  });
-
-  it("leaves the text alone for an unknown action", () => {
-    const result = applyMarkdown("nonsense", "unchanged", 0, 9);
-    expect(result.text).toBe("unchanged");
-  });
-
-  it("clamps a selection that is out of range", () => {
-    const result = applyMarkdown("bold", "hi", -5, 99);
-    expect(result.text).toBe("**hi**");
-    expect(result.selectionStart).toBe(2);
-  });
-});

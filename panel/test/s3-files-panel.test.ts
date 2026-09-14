@@ -306,6 +306,31 @@ describe("S3 files panel", () => {
     });
   });
 
+  it("marks the delete buttons as destructive", async () => {
+    // The variant is an attribute selector in ha-button, so it must be set as
+    // an attribute: a property binding would not reach the styling.
+    const { shadow } = await mount({
+      files: { "": [entry("a.md", "a.md")] },
+      contents: { "a.md": "hi" },
+    });
+
+    click(rows(shadow)[0].querySelector(".row-text"));
+    await flush(shadow.host);
+
+    const inEditor = Array.from(
+      editorDialog(shadow)!.querySelectorAll('ha-button[slot="secondaryAction"]'),
+    ).find((button) => button.textContent?.trim() === "Delete");
+    expect(inEditor?.getAttribute("variant")).toBe("danger");
+
+    click(inEditor);
+    await flush(shadow.host);
+
+    const confirm = Array.from(shadow.querySelectorAll("ha-dialog"))
+      .find((dialog) => (dialog as unknown as { heading?: string }).heading === "Delete file")
+      ?.querySelector('ha-button[slot="primaryAction"]');
+    expect(confirm?.getAttribute("variant")).toBe("danger");
+  });
+
   it("can delete from the editor as well as the row", async () => {
     const { shadow, calls } = await mount({
       files: { "": [entry("a.md", "a.md")] },
@@ -576,7 +601,7 @@ describe("renaming a file", () => {
   });
 });
 
-describe("the markdown toolbar", () => {
+describe("the preview toggle", () => {
   async function openEditor(setup: Setup) {
     const mounted = await mount(setup);
     click(rows(mounted.shadow)[0].querySelector(".row-text"));
@@ -584,59 +609,62 @@ describe("the markdown toolbar", () => {
     return mounted;
   }
 
-  function toolbarButton(shadow: ShadowRoot, label: string): Element | undefined {
-    // The formatting buttons carry a title; Preview/Write are labelled by text.
+  function toggle(shadow: ShadowRoot, label: string): Element | undefined {
     return Array.from(
       editorDialog(shadow)!.querySelectorAll(".markdown-bar button"),
-    ).find(
-      (button) =>
-        button.getAttribute("title") === label ||
-        button.textContent?.trim() === label,
-    );
+    ).find((button) => button.textContent?.trim() === label);
   }
 
-  it("wraps the selection in bold markers", async () => {
+  it("is the only control above the text", async () => {
     const { shadow } = await openEditor({
       files: { "": [entry("a.md", "a.md")] },
-      contents: { "a.md": "hello world" },
+      contents: { "a.md": "hello" },
     });
 
-    const area = editorTextarea(shadow);
-    area.setSelectionRange(0, 5);
-    click(toolbarButton(shadow, "Bold"));
-    await flush(shadow.host);
-
-    expect(editorTextarea(shadow).value).toBe("**hello** world");
+    const buttons = editorDialog(shadow)!.querySelectorAll(".markdown-bar button");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].textContent?.trim()).toBe("Preview");
   });
 
-  it("turns the selected lines into a list", async () => {
+  it("is offered even for a file that cannot be written", async () => {
+    // Reading is worth doing wherever writing is allowed or not.
     const { shadow } = await openEditor({
+      permissions: { allow_write: false },
       files: { "": [entry("a.md", "a.md")] },
-      contents: { "a.md": "milk\nbread" },
+      contents: { "a.md": "# Heading" },
     });
 
-    const area = editorTextarea(shadow);
-    area.setSelectionRange(0, "milk\nbread".length);
-    click(toolbarButton(shadow, "Bullet list"));
-    await flush(shadow.host);
-
-    expect(editorTextarea(shadow).value).toBe("- milk\n- bread");
+    expect(toggle(shadow, "Preview")).toBeDefined();
   });
 
-  it("toggles the preview without losing the text", async () => {
+  it("swaps the textarea for the rendered note", async () => {
     const { shadow } = await openEditor({
       files: { "": [entry("a.md", "a.md")] },
       contents: { "a.md": "# Heading" },
     });
 
-    click(toolbarButton(shadow, "Preview"));
+    click(toggle(shadow, "Preview"));
     await flush(shadow.host);
 
-    expect(editorDialog(shadow)!.querySelector("ha-markdown")).toBeTruthy();
+    const rendered = editorDialog(shadow)!.querySelector("ha-markdown") as
+      | (HTMLElement & { content?: string })
+      | null;
+    expect(rendered).toBeTruthy();
+    expect(rendered?.content).toBe("# Heading");
     expect(editorDialog(shadow)!.querySelector("textarea")).toBeNull();
+  });
 
-    click(toolbarButton(shadow, "Write"));
+  it("switches back without losing the text", async () => {
+    const { shadow } = await openEditor({
+      files: { "": [entry("a.md", "a.md")] },
+      contents: { "a.md": "# Heading" },
+    });
+
+    click(toggle(shadow, "Preview"));
     await flush(shadow.host);
+    click(toggle(shadow, "Write"));
+    await flush(shadow.host);
+
     expect(editorTextarea(shadow).value).toBe("# Heading");
   });
 });

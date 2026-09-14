@@ -11,7 +11,6 @@ import {
   writeFile,
 } from "./api";
 import {
-  applyMarkdown,
   baseName,
   breadcrumbs,
   describeEntry,
@@ -453,23 +452,6 @@ export class S3FilesPanel extends LitElement {
     }
   }
 
-  private async _applyFormat(action: string): Promise<void> {
-    const area = this._contentArea;
-    if (!area) return;
-
-    const result = applyMarkdown(
-      action,
-      this._editorContent,
-      area.selectionStart,
-      area.selectionEnd,
-    );
-    this._editorContent = result.text;
-    await this.updateComplete;
-
-    area.focus();
-    area.setSelectionRange(result.selectionStart, result.selectionEnd);
-  }
-
   private _rowMenuItems(entry: S3Entry) {
     const items: Record<string, unknown>[] = [];
     if (this._permissions.allow_read) {
@@ -670,22 +652,13 @@ export class S3FilesPanel extends LitElement {
     return "Edit file";
   }
 
-  private _renderMarkdownBar() {
-    const button = (label: string, action: string, title: string) =>
-      html`<button title=${title} @click=${() => void this._applyFormat(action)}>
-        ${label}
-      </button>`;
-
+  /** The only control above the text: a switch between writing and preview. */
+  private _renderPreviewToggle() {
     return html`
       <div class="markdown-bar">
-        ${button("B", "bold", "Bold")} ${button("I", "italic", "Italic")}
-        ${button("##", "heading", "Heading")}
-        ${button("•", "bullet", "Bullet list")}
-        ${button("❝", "quote", "Quote")} ${button("</>", "code", "Code")}
-        ${button("Link", "link", "Link")}
-        <span class="spacer"></span>
         <button
           data-active=${this._editorPreview}
+          title=${this._editorPreview ? "Back to writing" : "Preview the note"}
           @click=${() => (this._editorPreview = !this._editorPreview)}
         >
           ${this._editorPreview ? "Write" : "Preview"}
@@ -728,7 +701,7 @@ export class S3FilesPanel extends LitElement {
                 <label>File</label>
                 <div class="where">${this._editorName}</div>
               </div>`}
-          ${canWrite ? this._renderMarkdownBar() : nothing}
+          ${this._renderPreviewToggle()}
           ${this._editorPreview
             ? html`<div class="preview">
                 <ha-markdown .content=${this._editorContent}></ha-markdown>
@@ -757,6 +730,7 @@ export class S3FilesPanel extends LitElement {
           ${this._permissions.allow_delete && !this._editorIsNew
             ? html`<ha-button
                 slot="secondaryAction"
+                variant="danger"
                 @click=${() => {
                   const target = this._entries.find(
                     (item) => item.path === this._editorName,
@@ -851,7 +825,11 @@ export class S3FilesPanel extends LitElement {
           <ha-button slot="secondaryAction" @click=${() => (this._deleteTarget = null)}>
             Cancel
           </ha-button>
-          <ha-button slot="primaryAction" @click=${this._delete}>
+          <ha-button
+            slot="primaryAction"
+            variant="danger"
+            @click=${this._delete}
+          >
             Delete
           </ha-button>
         </ha-dialog-footer>
